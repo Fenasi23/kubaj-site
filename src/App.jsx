@@ -74,7 +74,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('data');
 
   // Yayınlarken burayı internet adresinizle değiştireceğiz
-  const API_URL = "http://127.0.0.1:3002";
+ const API_URL = import.meta.env.VITE_API_URL || "https://kubaj-backend.onrender.com";
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
