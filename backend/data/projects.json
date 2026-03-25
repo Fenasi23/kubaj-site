@@ -1,0 +1,84 @@
+[
+  {
+    "firmId": "1773821117710",
+    "jobName": "elektrik",
+    "hakedisData": {
+      "details": {},
+      "data": []
+    },
+    "updatedAt": "2026-03-18T08:07:10.780Z",
+    "kubajData": {
+      "points": [
+        {
+          "Nokta No": 1,
+          "X Koordinatı": 1000,
+          "Y Koordinatı": 2000,
+          "Mevcut Kot (m)": 101.2,
+          "Proje Kot (m)": 102,
+          "Kot Farkı (Proje-Mevcut)": 0.7999999999999972,
+          "Grid Alanı (m2)": 25,
+          "Hacim (m3)": 19.99999999999993
+        },
+        {
+          "Nokta No": 2,
+          "X Koordinatı": 1005,
+          "Y Koordinatı": 2000,
+          "Mevcut Kot (m)": 100.8,
+          "Proje Kot (m)": 102,
+          "Kot Farkı (Proje-Mevcut)": 1.2000000000000028,
+          "Grid Alanı (m2)": 25,
+          "Hacim (m3)": 30.00000000000007
+        },
+        {
+          "Nokta No": 3,
+          "X Koordinatı": 1010,
+          "Y Koordinatı": 2000,
+          "Mevcut Kot (m)": 101.5,
+          "Proje Kot (m)": 102,
+          "Kot Farkı (Proje-Mevcut)": 0.5,
+          "Grid Alanı (m2)": 25,
+          "Hacim (m3)": 12.5
+        },
+        {
+          "Nokta No": 4,
+          "X Koordinatı": 1000,
+          "Y Koordinatı": 2005,
+          "Mevcut Kot (m)": 101,
+          "Proje Kot (m)": 102,
+          "Kot Farkı (Proje-Mevcut)": 1,
+          "Grid Alanı (m2)": 25,
+          "Hacim (m3)": 25
+        },
+        {
+          "Nokta No": 5,
+          "X Koordinatı": 1005,
+          "Y Koordinatı": 2005,
+          "Mevcut Kot (m)": 100.6,
+          "Proje Kot (m)": 102,
+          "Kot Farkı (Proje-Mevcut)": 1.4000000000000057,
+          "Grid Alanı (m2)": 25,
+          "Hacim (m3)": 35.00000000000014
+        },
+        {
+          "Nokta No": 6,
+          "X Koordinatı": 1010,
+          "Y Koordinatı": 2005,
+          "Mevcut Kot (m)": 101.3,
+          "Proje Kot (m)": 102,
+          "Kot Farkı (Proje-Mevcut)": 0.7000000000000028,
+          "Grid Alanı (m2)": 25,
+          "Hacim (m3)": 17.50000000000007
+        },
+        {
+          "Grid Alanı (m2)": "Toplam Hacim",
+          "Hacim (m3)": 140.00000000000023
+        }
+      ],
+      "results": {
+        "cutVolume": 0,
+        "fillVolume": 0,
+        "totalVolume": 0
+      }
+    }
+  }
+]
