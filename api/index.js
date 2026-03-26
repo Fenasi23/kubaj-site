@@ -15,27 +15,35 @@ const app = express();
 // --- MONGODB BAĞLANTISI ---
 const mongoUri = "mongodb+srv://yinemisenpalu_db_user:3qOfQg0ElHtBmnUF@cluster.hgggsjw.mongodb.net/kubaj_site?retryWrites=true&w=majority&appName=Cluster";
 
-let isConnected = false;
+let cachedDb = null;
 
 const connectDB = async () => {
-    if (isConnected) return;
+    if (cachedDb && mongoose.connection.readyState === 1) return cachedDb;
+    
+    console.log('MongoDB Atlas bağlantısı kuruluyor...');
     try {
-        await mongoose.connect(mongoUri, {
+        const db = await mongoose.connect(mongoUri, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
-            bufferCommands: false, // Don't buffer if connection is not ready
+            serverSelectionTimeoutMS: 5000, // 5 saniye sonra timeout ver (10 bekletme)
         });
-        isConnected = true;
+        cachedDb = db;
         console.log('MongoDB Atlas bağlantısı başarılı');
+        return db;
     } catch (err) {
-        console.error('MongoDB bağlantı hatası:', err);
+        console.error('MongoDB bağlantı hatası detayları:', err.message);
+        throw new Error('Veritabanı bağlantısı kurulamadı. Lütfen MongoDB Atlas IP Whitelist ayarlarını kontrol edin.');
     }
 };
 
 // Middleware to ensure DB connection
 app.use(async (req, res, next) => {
-    await connectDB();
-    next();
+    try {
+        await connectDB();
+        next();
+    } catch (err) {
+        res.status(500).json({ error: 'Veritabanı Bağlantı Hatası', message: err.message });
+    }
 });
 
 // Veritabanı Şemaları
