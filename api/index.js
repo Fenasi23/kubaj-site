@@ -47,7 +47,11 @@ app.use(async (req, res, next) => {
 });
 
 // Veritabanı Şemaları
-const FirmSchema = new mongoose.Schema({ name: String, createdAt: { type: Date, default: Date.now } });
+const FirmSchema = new mongoose.Schema({ 
+    name: String, 
+    createdAt: { type: Date, default: Date.now } 
+}, { toJSON: { virtuals: true }, toObject: { virtuals: true } });
+
 const Firm = mongoose.models.Firm || mongoose.model('Firm', FirmSchema);
 
 const ProjectSchema = new mongoose.Schema({
@@ -56,7 +60,8 @@ const ProjectSchema = new mongoose.Schema({
     kubajData: Object,
     hakedisData: Array,
     updatedAt: { type: Date, default: Date.now }
-});
+}, { toJSON: { virtuals: true }, toObject: { virtuals: true } });
+
 const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);
 
 const SettingsSchema = new mongoose.Schema({
