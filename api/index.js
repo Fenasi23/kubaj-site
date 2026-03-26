@@ -13,10 +13,30 @@ const DxfParser = require('dxf-parser');
 const app = express();
 
 // --- MONGODB BAĞLANTISI ---
-const mongoUri = "mongodb+srv://yinemisenpalu_db_user:3qOfQg0ElHtBmnUF@cluster.hgggsjw.mongodb.net/?appName=Cluster";
-mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log('MongoDB Atlas bağlantısı başarılı'))
-    .catch(err => console.error('MongoDB bağlantı hatası:', err));
+const mongoUri = "mongodb+srv://yinemisenpalu_db_user:3qOfQg0ElHtBmnUF@cluster.hgggsjw.mongodb.net/kubaj_site?retryWrites=true&w=majority&appName=Cluster";
+
+let isConnected = false;
+
+const connectDB = async () => {
+    if (isConnected) return;
+    try {
+        await mongoose.connect(mongoUri, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            bufferCommands: false, // Don't buffer if connection is not ready
+        });
+        isConnected = true;
+        console.log('MongoDB Atlas bağlantısı başarılı');
+    } catch (err) {
+        console.error('MongoDB bağlantı hatası:', err);
+    }
+};
+
+// Middleware to ensure DB connection
+app.use(async (req, res, next) => {
+    await connectDB();
+    next();
+});
 
 // Veritabanı Şemaları
 const FirmSchema = new mongoose.Schema({ name: String, createdAt: { type: Date, default: Date.now } });
