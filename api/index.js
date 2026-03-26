@@ -249,24 +249,57 @@ app.post('/api/convert/dxf-to-ncn', upload.single('file'), (req, res) => {
 const fontRegular = path.join(__dirname, 'Roboto-Regular.ttf');
 const fontBold = path.join(__dirname, 'Roboto-Bold.ttf');
 
-app.post('/api/export/pdf', (req, res) => {
+app.post('/api/export/pdf', async (req, res) => {
     try {
         const { points, results } = req.body;
-        const doc = new PDFDocument({ margin: 50 });
-        if (fs.existsSync(fontRegular)) doc.font(fontRegular);
+        const settings = await Settings.findOne() || { companyName: 'MUHAMMED BİLİCİ - HARİTA ÇÖZÜMLERİ' };
+        
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         doc.pipe(res);
+
+        // HEADER
         if (fs.existsSync(fontBold)) doc.font(fontBold);
-        doc.fontSize(20).text('KUBAJ ANALİZ RAPORU', { align: 'center' });
-        doc.moveDown();
+        doc.fontSize(16).text(settings.companyName.toUpperCase(), { align: 'center' });
         if (fs.existsSync(fontRegular)) doc.font(fontRegular);
-        doc.fontSize(12).text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, { align: 'right' });
+        doc.fontSize(10).text(settings.companyAddress || '', { align: 'center' });
+        doc.moveDown(2);
+        
+        doc.fontSize(18).text('KUBAJ ANALİZ RAPORU', { align: 'center', underline: true });
+        doc.moveDown(2);
+
+        // ÖZET TABLO (ORTALANMIŞ)
+        doc.fontSize(12);
+        const centerX = doc.page.width / 2;
+        doc.text('Analiz Sonuçları', { align: 'center' });
         doc.moveDown();
-        doc.fontSize(14).text('Özet Sonuçlar', { underline: true });
+        
+        const labelX = 150;
+        const valueX = 350;
+        
+        doc.text('Toplam Kazı Hacmi:', labelX);
+        doc.text(`${results?.cutVolume?.toLocaleString('tr-TR')} m³`, valueX);
         doc.moveDown(0.5);
-        doc.fontSize(12).text(`Kazı Hacmi: ${results?.cutVolume?.toLocaleString('tr-TR')} m³`);
-        doc.text(`Dolgu Hacmi: ${results?.fillVolume?.toLocaleString('tr-TR')} m³`);
-        doc.text(`Net Hacim: ${results?.totalVolume?.toLocaleString('tr-TR')} m³`);
+        
+        doc.text('Toplam Dolgu Hacmi:', labelX);
+        doc.text(`${results?.fillVolume?.toLocaleString('tr-TR')} m³`, valueX);
+        doc.moveDown(0.5);
+        
+        if (fs.existsSync(fontBold)) doc.font(fontBold);
+        doc.text('Net Hacim:', labelX);
+        doc.text(`${results?.totalVolume?.toLocaleString('tr-TR')} m³`, valueX);
+        doc.moveDown(4);
+
+        // İMZA ALANI
+        const footerY = doc.page.height - 150;
+        if (fs.existsSync(fontBold)) doc.font(fontBold);
+        doc.text('HAZIRLAYAN', 100, footerY, { width: 150, align: 'center' });
+        doc.text('KONTROL / ONAY', 350, footerY, { width: 150, align: 'center' });
+        
+        if (fs.existsSync(fontRegular)) doc.font(fontRegular);
+        doc.text(settings.defaultPreparer || settings.userName || '....................', 100, footerY + 20, { width: 150, align: 'center' });
+        doc.text(settings.defaultController || '....................', 350, footerY + 20, { width: 150, align: 'center' });
+
         doc.end();
     } catch (err) { res.status(500).send('PDF Hatası: ' + err.message); }
 });
@@ -293,28 +326,60 @@ app.post('/api/export/excel', (req, res) => {
     } catch (err) { res.status(500).send('Excel Hatası: ' + err.message); }
 });
 
-app.post('/api/export/hakedis-pdf', (req, res) => {
+app.post('/api/export/hakedis-pdf', async (req, res) => {
     try {
         const { details, volumes, calculation, manualData } = req.body;
-        const doc = new PDFDocument({ margin: 50 });
-        if (fs.existsSync(fontRegular)) doc.font(fontRegular);
+        const settings = await Settings.findOne() || { companyName: 'MUHAMMED BİLİCİ - HARİTA ÇÖZÜMLERİ' };
+        
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         doc.pipe(res);
+
+        // HEADER
         if (fs.existsSync(fontBold)) doc.font(fontBold);
-        doc.fontSize(18).text('HAKEDİŞ RAPORU', { align: 'center' });
+        doc.fontSize(16).text(settings.companyName.toUpperCase(), { align: 'center' });
+        if (fs.existsSync(fontRegular)) doc.font(fontRegular);
+        doc.fontSize(10).text(settings.companyAddress || '', { align: 'center' });
+        doc.moveDown(2);
+
+        doc.fontSize(18).text('HAKEDİŞ RAPORU', { align: 'center', underline: true });
+        doc.moveDown(1);
         doc.fontSize(12).text(details.isinAdi || 'İş Adı Belirtilmedi', { align: 'center' });
-        doc.moveDown();
+        doc.moveDown(2);
+
+        // BİLGİ ALANI
+        const labelX = 70;
+        const valueX = 180;
+        doc.fontSize(10);
+        doc.text('Yüklenici:', labelX); doc.text(details.yukleniciFirma || '-', valueX);
+        doc.text('Hakediş No:', labelX); doc.text(details.hakedisNo || '-', valueX);
+        doc.text('Tarih:', labelX); doc.text(new Date().toLocaleDateString('tr-TR'), valueX);
+        doc.moveDown(2);
+
+        // HACİM ÖZETİ
+        if (fs.existsSync(fontBold)) doc.font(fontBold);
+        doc.fontSize(11).text('1. KUBAJ HESABI ÖZETİ', { underline: true });
+        doc.moveDown(0.5);
         if (fs.existsSync(fontRegular)) doc.font(fontRegular);
         doc.fontSize(10);
-        doc.text(`Yüklenici: ${details.yukleniciFirma || '-'}`);
-        doc.text(`Hakediş No: ${details.hakedisNo || '-'}`);
-        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`);
-        doc.moveDown();
-        doc.fontSize(12).text('1. KUBAJ HESABI ÖZETİ', { underline: true });
-        doc.moveDown(0.5);
-        doc.fontSize(10).text(`Hakedişe Esas Net Hacim: ${calculation?.totalVolume?.toLocaleString('tr-TR')} m³`);
-        doc.text(`Birim Fiyat: ${details.birimFiyat?.toLocaleString('tr-TR')} TL/m³`);
-        doc.text(`Kubaj Hakediş Tutarı: ${calculation?.totalAmount?.toLocaleString('tr-TR')} TL`, { bold: true });
+        doc.text('Hakedişe Esas Net Hacim:', labelX); doc.text(`${calculation?.totalVolume?.toLocaleString('tr-TR')} m³`, valueX + 50);
+        doc.text('Birim Fiyat:', labelX); doc.text(`${details.birimFiyat?.toLocaleString('tr-TR')} TL/m³`, valueX + 50);
+        
+        if (fs.existsSync(fontBold)) doc.font(fontBold);
+        doc.text('Kubaj Hakediş Tutarı:', labelX); 
+        doc.text(`${(calculation?.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, valueX + 50);
+        doc.moveDown(3);
+
+        // İMZA ALANI
+        const footerY = doc.page.height - 150;
+        if (fs.existsSync(fontBold)) doc.font(fontBold);
+        doc.text('HAZIRLAYAN', 100, footerY, { width: 150, align: 'center' });
+        doc.text('KONTROL / ONAY', 350, footerY, { width: 150, align: 'center' });
+        
+        if (fs.existsSync(fontRegular)) doc.font(fontRegular);
+        doc.text(details.imzaciAdi || '....................', 100, footerY + 20, { width: 150, align: 'center' });
+        doc.text(details.kontrolEdenAdi || '....................', 350, footerY + 20, { width: 150, align: 'center' });
+
         doc.end();
     } catch (err) { res.status(500).send('Hakediş PDF Hatası: ' + err.message); }
 });
