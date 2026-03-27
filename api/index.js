@@ -59,7 +59,7 @@ const ProjectSchema = new mongoose.Schema({
     firmId: String,
     jobName: String,
     kubajData: Object,
-    hakedisData: Array,
+    hakedisData: Object,
     updatedAt: { type: Date, default: Date.now }
 }, { toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
@@ -111,6 +111,15 @@ app.get('/api/firms/:id/projects', async (req, res) => {
         const projects = await Project.find({ firmId: req.params.id }).select('jobName');
         res.json(projects.map(p => p.jobName));
     } catch (err) { res.status(500).send('Projeler çekilemedi.'); }
+});
+
+app.get('/api/hakedis', async (req, res) => {
+    const { 'x-firm-id': firmId, 'x-job-name': jobNameEncoded } = req.headers;
+    const jobName = jobNameEncoded ? decodeURIComponent(jobNameEncoded) : null;
+    try {
+        const project = await Project.findOne({ firmId, jobName });
+        res.json(project?.hakedisData || { details: {}, data: [] });
+    } catch (err) { res.status(500).send('Veri çekilemedi.'); }
 });
 
 app.get('/api/kubaj', async (req, res) => {
