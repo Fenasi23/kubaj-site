@@ -550,6 +550,9 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         doc.text(details.kontrolEdenAdi || '', 350, footerY + 20, { width: 150, align: 'center' });
 
         doc.end();
+    } catch (err) { res.status(500).send('Hakedis PDF Hatası: ' + err.message); }
+});
+
 app.post('/api/export/summary-pdf', async (req, res) => {
     try {
         const { projects } = req.body;

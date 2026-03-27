@@ -243,8 +243,7 @@ function App() {
       setShowAddFirm(false);
     } catch (error) {
       console.error("Firma ekleme hatasi:", error);
-      const errorData = error.response?.data;
-      const errorMsg = typeof errorData === 'object' ? (errorData.message || JSON.stringify(errorData)) : (errorData || error.message);
+      const errorMsg = error.response?.data?.message || error.response?.data || error.message;
       alert("Firma eklenemedi: " + errorMsg);
     }
   };
@@ -448,9 +447,7 @@ function App() {
       setProjects(r.data);
       setSelectedProject(trimmedName);
     } catch (err) {
-      const errorData = err.response?.data;
-      const errorMsg = typeof errorData === 'object' ? (errorData.message || JSON.stringify(errorData)) : (errorData || err.message);
-      alert("İş eklenemedi: " + errorMsg);
+      alert("İş eklenemedi.");
     }
   };
 
