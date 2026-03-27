@@ -197,8 +197,8 @@ function App() {
             setHakedisData(legacyData);
             setHakedisDetails({ 
               birimFiyat: 0, 
-              isinAdi: selectedProject, 
-              yukleniciFirma: '', 
+              isinAdi: selectedProject || '', 
+              yukleniciFirma: selectedFirm?.name || '', 
               hakedisNo: '01', 
               imzaciAdi: settings.defaultPreparer || settings.userName || '', 
               kontrolEdenAdi: settings.defaultController || '' 
@@ -295,6 +295,13 @@ function App() {
       setPoints(resp.data.points || []);
       setResults(resp.data.results || null);
       if (resp.data.points?.length > 0) setActiveTab('results');
+      
+      // Analiz yüklendiğinde hakediş bilgilerini de güncelle (eğer boşsa)
+      setHakedisDetails(prev => ({
+        ...prev,
+        isinAdi: prev.isinAdi || selectedProject || '',
+        yukleniciFirma: prev.yukleniciFirma || selectedFirm?.name || ''
+      }));
     } catch (error) {
       alert('Hata: ' + (error.response?.data?.error || error.message));
     } finally {
@@ -871,7 +878,14 @@ function App() {
                 onClick={async () => {
                   try {
                     await axios.post(`${API_URL}/api/settings`, settings);
-                    alert("Ayarlar başarıyla kaydedildi.");
+                    // Analiz yüklendiğinde hakediş bilgilerini de güncelle (eğer boşsa)
+      setHakedisDetails(prev => ({
+        ...prev,
+        isinAdi: prev.isinAdi || selectedProject || '',
+        yukleniciFirma: prev.yukleniciFirma || selectedFirm?.name || ''
+      }));
+
+      alert('Dosya başarıyla yüklendi ve analiz edildi.');
                   } catch(e) { alert("Kaydetme hatası!"); }
                 }} 
                 className="btn"
