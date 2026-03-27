@@ -368,26 +368,36 @@ app.post('/api/export/pdf', async (req, res) => {
         doc.fontSize(18).text('KUBAJ ANALİZ RAPORU', { align: 'center', underline: true });
         doc.moveDown(2);
 
-        // ÖZET TABLO (ORTALANMIŞ)
+        // ÖZET TABLO (Geliştirilmiş Görünüm)
         doc.fontSize(12);
-        const centerX = doc.page.width / 2;
-        doc.text('Analiz Sonuçları', { align: 'center' });
-        doc.moveDown();
+        doc.text('Analiz Sonuçları', { align: 'center', underline: true });
+        doc.moveDown(1.5);
         
-        const labelX = 150;
+        const labelX = 100;
         const valueX = 350;
         
-        doc.text('Toplam Kazı Hacmi:', labelX);
-        doc.text(`${results?.cutVolume?.toLocaleString('tr-TR')} m³`, valueX);
+        // Tablo Başlığı Alanı (Opsiyonel Çizgi)
+        doc.moveTo(100, doc.y).lineTo(500, doc.y).stroke();
+        doc.moveDown(0.5);
+
+        const row = (label, value, isBold = false) => {
+            const y = doc.y;
+            if (isBold && fs.existsSync(fontBold)) doc.font(fontBold);
+            doc.text(label, labelX, y);
+            doc.text(value, valueX, y, { align: 'right', width: 150 });
+            if (isBold && fs.existsSync(fontRegular)) doc.font(fontRegular);
+            doc.moveDown(0.8);
+        };
+
+        row('Toplam Kazı Hacmi:', `${results?.cutVolume?.toLocaleString('tr-TR')} m³`);
+        row('Toplam Dolgu Hacmi:', `${results?.fillVolume?.toLocaleString('tr-TR')} m³`);
+        
+        doc.moveTo(100, doc.y).lineTo(500, doc.y).stroke();
         doc.moveDown(0.5);
         
-        doc.text('Toplam Dolgu Hacmi:', labelX);
-        doc.text(`${results?.fillVolume?.toLocaleString('tr-TR')} m³`, valueX);
-        doc.moveDown(0.5);
+        row('Net Hacim:', `${results?.totalVolume?.toLocaleString('tr-TR')} m³`, true);
         
-        if (fs.existsSync(fontBold)) doc.font(fontBold);
-        doc.text('Net Hacim:', labelX);
-        doc.text(`${results?.totalVolume?.toLocaleString('tr-TR')} m³`, valueX);
+        doc.moveTo(100, doc.y).lineTo(500, doc.y).stroke();
         doc.moveDown(4);
 
         // İMZA ALANI
@@ -397,8 +407,8 @@ app.post('/api/export/pdf', async (req, res) => {
         doc.text('KONTROL / ONAY', 350, footerY, { width: 150, align: 'center' });
         
         if (fs.existsSync(fontRegular)) doc.font(fontRegular);
-        doc.text(settings.defaultPreparer || settings.userName || '....................', 100, footerY + 20, { width: 150, align: 'center' });
-        doc.text(settings.defaultController || '....................', 350, footerY + 20, { width: 150, align: 'center' });
+        doc.text(settings.defaultPreparer || settings.userName || '', 100, footerY + 20, { width: 150, align: 'center' });
+        doc.text(settings.defaultController || '', 350, footerY + 20, { width: 150, align: 'center' });
 
         doc.end();
     } catch (err) { res.status(500).send('PDF Hatası: ' + err.message); }
@@ -449,12 +459,20 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
 
         // BİLGİ ALANI
         const labelX = 70;
-        const valueX = 180;
+        const valueX = 200;
         doc.fontSize(10);
-        doc.text('Yüklenici:', labelX); doc.text(details.yukleniciFirma || '-', valueX);
-        doc.text('Hakediş No:', labelX); doc.text(details.hakedisNo || '-', valueX);
-        doc.text('Tarih:', labelX); doc.text(new Date().toLocaleDateString('tr-TR'), valueX);
-        doc.moveDown(2);
+        
+        const infoRow = (label, value) => {
+            const y = doc.y;
+            doc.text(label, labelX, y);
+            doc.text(value, valueX, y);
+            doc.moveDown(0.5);
+        };
+
+        infoRow('Yüklenici:', details.yukleniciFirma || '-');
+        infoRow('Hakediş No:', details.hakedisNo || '-');
+        infoRow('Tarih:', new Date().toLocaleDateString('tr-TR'));
+        doc.moveDown(1.5);
 
         // HACİM ÖZETİ
         if (fs.existsSync(fontBold)) doc.font(fontBold);
@@ -462,12 +480,21 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         doc.moveDown(0.5);
         if (fs.existsSync(fontRegular)) doc.font(fontRegular);
         doc.fontSize(10);
-        doc.text('Hakedişe Esas Net Hacim:', labelX); doc.text(`${calculation?.totalVolume?.toLocaleString('tr-TR')} m³`, valueX + 50);
-        doc.text('Birim Fiyat:', labelX); doc.text(`${details.birimFiyat?.toLocaleString('tr-TR')} TL/m³`, valueX + 50);
+        
+        const volY = doc.y;
+        doc.text('Hakedişe Esas Net Hacim:', labelX, volY); 
+        doc.text(`${calculation?.totalVolume?.toLocaleString('tr-TR')} m³`, valueX + 50, volY, { align: 'right', width: 100 });
+        doc.moveDown(0.5);
+
+        const priceY = doc.y;
+        doc.text('Birim Fiyat:', labelX, priceY); 
+        doc.text(`${details.birimFiyat?.toLocaleString('tr-TR')} TL/m³`, valueX + 50, priceY, { align: 'right', width: 100 });
+        doc.moveDown(0.8);
         
         if (fs.existsSync(fontBold)) doc.font(fontBold);
-        doc.text('Kubaj Hakediş Tutarı:', labelX); 
-        doc.text(`${(calculation?.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, valueX + 50);
+        const totalY = doc.y;
+        doc.text('Kubaj Hakediş Tutarı:', labelX, totalY); 
+        doc.text(`${(calculation?.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, valueX + 50, totalY, { align: 'right', width: 100 });
         doc.moveDown(3);
 
         // İMZA ALANI
@@ -477,8 +504,8 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         doc.text('KONTROL / ONAY', 350, footerY, { width: 150, align: 'center' });
         
         if (fs.existsSync(fontRegular)) doc.font(fontRegular);
-        doc.text(details.imzaciAdi || '....................', 100, footerY + 20, { width: 150, align: 'center' });
-        doc.text(details.kontrolEdenAdi || '....................', 350, footerY + 20, { width: 150, align: 'center' });
+        doc.text(details.imzaciAdi || '', 100, footerY + 20, { width: 150, align: 'center' });
+        doc.text(details.kontrolEdenAdi || '', 350, footerY + 20, { width: 150, align: 'center' });
 
         doc.end();
     } catch (err) { res.status(500).send('Hakediş PDF Hatası: ' + err.message); }
