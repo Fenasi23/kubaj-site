@@ -179,22 +179,20 @@ const parseNcz = (buffer) => {
         // X (North): 3.500.000 - 5.000.000
         // Bu aralıklara uyan 8-byte double çiftlerini bulmaya çalışıyoruz.
         
-        for (let i = 0; i < data.length - 24; i += 2) {
+        // Daha hassas tarama: 1-byte adımlarla ilerle (Tüm versiyonlar için en kesin sonuç)
+        for (let i = 0; i < data.length - 24; i++) {
             const y = data.readDoubleLE(i);
             const x = data.readDoubleLE(i + 8);
             const z = data.readDoubleLE(i + 16);
 
-            // Koordinat aralığı kontrolü (Daha geniş ve esnek bir filtre)
-            // Y ve X değerlerinden en az birinin büyük bir değer olması (coğrafi koordinat) 
-            // ve değerlerin makul (NaN değil, sonsuz değil) olması gerekir.
-            const isValidCoord = (val) => !isNaN(val) && isFinite(val) && Math.abs(val) > 1;
+            // Koordinat aralığı kontrolü: NaN/Sonsuz olmayan ve makul büyüklükteki sayıları yakala
+            const isValidVal = (v) => !isNaN(v) && isFinite(v) && Math.abs(v) < 10000000;
             
-            if (isValidCoord(y) && isValidCoord(x) && Math.abs(z) < 100000) {
-                // Türkiye sınırları genişletildi veya yerel koordinatlar (0-100.000) dahil edildi.
-                const isTurkeyUTM = (y > 100000 && y < 1000000 && x > 3000000 && x < 6000000);
-                const isLocalCoord = (y > -100000 && y < 100000 && x > -100000 && x < 100000);
-
-                if (isTurkeyUTM || isLocalCoord) {
+            if (isValidVal(y) && isValidVal(x) && Math.abs(z) < 1000000) {
+                // Türkiye UTM (ITRF/ED50) veya Yerel Koordinat (0-1.000.000) aralıkları
+                const inRange = (y > -1000000 && y < 2000000 && x > -1000000 && x < 8000000);
+                
+                if (inRange && Math.abs(y) > 0.001 && Math.abs(x) > 0.001) {
                     points.push({
                         id: `N${points.length + 1}`,
                         y: y,
@@ -202,7 +200,24 @@ const parseNcz = (buffer) => {
                         z_mevcut: z,
                         z_proje: 0
                     });
-                    i += 22; // Bir nokta bulduğumuzda 24 byte (double*3) atla
+                    i += 23; // Nokta bulunduğunda bloğu atla
+                }
+            }
+        }
+
+        // Eğer hiç nokta bulunamadıysa, eski versiyonlarda 4-byte (float) kullanımını kontrol et
+        if (points.length === 0) {
+            for (let i = 0; i < data.length - 12; i++) {
+                const y = data.readFloatLE(i);
+                const x = data.readFloatLE(i + 4);
+                const z = data.readFloatLE(i + 8);
+                const isValidVal = (v) => !isNaN(v) && isFinite(v) && Math.abs(v) < 10000000;
+                if (isValidVal(y) && isValidVal(x) && Math.abs(z) < 1000000) {
+                    const inRange = (y > -1000000 && y < 2000000 && x > -1000000 && x < 8000000);
+                    if (inRange && Math.abs(y) > 1 && Math.abs(x) > 1) {
+                        points.push({ id: `NF${points.length + 1}`, y: y, x: x, z_mevcut: z, z_proje: 0 });
+                        i += 11;
+                    }
                 }
             }
         }
