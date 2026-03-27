@@ -490,8 +490,8 @@ function App() {
                 <section className="glass-card">
                   <div className="upload-zone" onClick={() => document.getElementById('fileInput').click()}>
                     <Upload size={48} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
-                    <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>{loading ? 'Analiz Ediliyor...' : 'Excel veya NCN Yükleyin'}</h3>
-                    <p style={{ color: 'var(--text-muted)' }}>.xlsx, .xls ve .ncn formatları desteklenir.</p>
+                    <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>{loading ? 'Analiz Ediliyor...' : 'Excel, NCN veya NCZ Yükleyin'}</h3>
+                    <p style={{ color: 'var(--text-muted)' }}>.xlsx, .xls, .ncn ve .ncz formatları desteklenir.</p>
                     <input id="fileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={handleFileUpload} />
                   </div>
                 </section>

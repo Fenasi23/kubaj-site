@@ -179,31 +179,46 @@ const parseNcz = (buffer) => {
         // X (North): 3.500.000 - 5.000.000
         // Bu aralıklara uyan 8-byte double çiftlerini bulmaya çalışıyoruz.
         
-        for (let i = 0; i < data.length - 24; i += 4) {
+        for (let i = 0; i < data.length - 24; i += 2) {
             const y = data.readDoubleLE(i);
             const x = data.readDoubleLE(i + 8);
             const z = data.readDoubleLE(i + 16);
 
-            // Koordinat aralığı kontrolü (Türkiye için genel filtre)
-            if (y > 100000 && y < 1000000 && x > 3000000 && x < 6000000) {
-                // Eğer geçerli görünüyorsa ekle
-                // Not: NCZ içinde her nokta için bir ID olmayabilir, biz üretiyoruz.
-                points.push({
-                    id: `N${points.length + 1}`,
-                    y: y,
-                    x: x,
-                    z_mevcut: z,
-                    z_proje: 0
-                });
-                // Nokta bulduğumuzda 24 byte atla (veya daha fazlasını dene)
-                i += 20; 
+            // Koordinat aralığı kontrolü (Daha geniş ve esnek bir filtre)
+            // Y ve X değerlerinden en az birinin büyük bir değer olması (coğrafi koordinat) 
+            // ve değerlerin makul (NaN değil, sonsuz değil) olması gerekir.
+            const isValidCoord = (val) => !isNaN(val) && isFinite(val) && Math.abs(val) > 1;
+            
+            if (isValidCoord(y) && isValidCoord(x) && Math.abs(z) < 100000) {
+                // Türkiye sınırları genişletildi veya yerel koordinatlar (0-100.000) dahil edildi.
+                const isTurkeyUTM = (y > 100000 && y < 1000000 && x > 3000000 && x < 6000000);
+                const isLocalCoord = (y > -100000 && y < 100000 && x > -100000 && x < 100000);
+
+                if (isTurkeyUTM || isLocalCoord) {
+                    points.push({
+                        id: `N${points.length + 1}`,
+                        y: y,
+                        x: x,
+                        z_mevcut: z,
+                        z_proje: 0
+                    });
+                    i += 22; // Bir nokta bulduğumuzda 24 byte (double*3) atla
+                }
             }
         }
 
-        // Çok fazla "hayalet" nokta bulmuş olabiliriz, birbirine çok yakın (0.001m altı) olanları eleyebiliriz.
-        if (points.length > 5000) {
-             // Çok büyük dosyalarda sadece bir kısmını alalım veya filtreleyelim
-             points = points.filter((p, i) => i % 2 === 0).slice(0, 10000);
+        // Benzer noktaları temizle (duplicate removal)
+        if (points.length > 0) {
+            const uniquePoints = [];
+            const seen = new Set();
+            points.forEach(p => {
+                const key = `${p.x.toFixed(3)}-${p.y.toFixed(3)}`;
+                if (!seen.has(key)) {
+                    uniquePoints.push(p);
+                    seen.add(key);
+                }
+            });
+            points = uniquePoints;
         }
 
     } catch (err) {
