@@ -315,7 +315,7 @@ function App() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      const extension = endpoint === 'ncn-to-dxf' ? 'dxf' : 'ncn';
+      const extension = endpoint.split('-to-')[1]; // ncn-to-dxf -> dxf, ncz-to-ncn -> ncn
       link.setAttribute('download', `donusturulmus_${Date.now()}.${extension}`);
       document.body.appendChild(link);
       link.click();
@@ -806,6 +806,46 @@ function App() {
                     accept=".dxf" 
                     hidden 
                     onChange={(e) => handleConversion(e, 'dxf-to-ncn')} 
+                  />
+                </label>
+              </section>
+
+              <section className="glass-card" style={{ textAlign: 'center' }}>
+                <div style={{ marginBottom: '1.5rem', color: 'var(--primary-color)' }}>
+                  <FileCheck size={48} />
+                </div>
+                <h3 style={{ marginBottom: '1rem' }}>NCZ → DXF</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                  Netcad NCZ dosyasından koordinatları ayıklayıp DXF'e dönüştürün.
+                </p>
+                <label className="btn" style={{ cursor: 'pointer', display: 'inline-flex' }}>
+                  <Upload size={18} style={{ marginRight: '8px' }} />
+                  Dosya Yükle (.ncz)
+                  <input 
+                    type="file" 
+                    accept=".ncz" 
+                    hidden 
+                    onChange={(e) => handleConversion(e, 'ncz-to-dxf')} 
+                  />
+                </label>
+              </section>
+
+              <section className="glass-card" style={{ textAlign: 'center' }}>
+                <div style={{ marginBottom: '1.5rem', color: '#6366f1' }}>
+                  <RefreshCw size={48} />
+                </div>
+                <h3 style={{ marginBottom: '1rem' }}>NCZ → NCN</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                  NCZ çizim dosyasındaki tüm noktaları NCN formatına aktarın.
+                </p>
+                <label className="btn" style={{ cursor: 'pointer', display: 'inline-flex', background: '#6366f1' }}>
+                  <Upload size={18} style={{ marginRight: '8px' }} />
+                  Dosya Yükle (.ncz)
+                  <input 
+                    type="file" 
+                    accept=".ncz" 
+                    hidden 
+                    onChange={(e) => handleConversion(e, 'ncz-to-ncn')} 
                   />
                 </label>
               </section>

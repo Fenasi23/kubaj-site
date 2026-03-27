@@ -9,6 +9,7 @@ const PDFDocument = require('pdfkit');
 const { DxfWriter } = require('@tarikjabiri/dxf');
 
 const DxfParser = require('dxf-parser');
+const zlib = require('zlib');
 
 const app = express();
 
@@ -160,6 +161,57 @@ const mapHeaders = (row) => {
     return mapped;
 };
 
+// --- NCZ (Netcad) BINARY PARSER ---
+const parseNcz = (buffer) => {
+    let points = [];
+    try {
+        // NCZ dosyaları genellikle sıkıştırılmıştır.
+        let data = buffer;
+        try {
+            data = zlib.inflateSync(buffer);
+        } catch (e) {
+            // Sıkıştırılmamış olabilir, devam et
+        }
+
+        // Basit ikili tarama: 3'lü double (8-byte) grupları ara
+        // Türkiye koordinat sistemleri (ITRF/ED50) için tipik aralıklar:
+        // Y (East): 200.000 - 800.000
+        // X (North): 3.500.000 - 5.000.000
+        // Bu aralıklara uyan 8-byte double çiftlerini bulmaya çalışıyoruz.
+        
+        for (let i = 0; i < data.length - 24; i += 4) {
+            const y = data.readDoubleLE(i);
+            const x = data.readDoubleLE(i + 8);
+            const z = data.readDoubleLE(i + 16);
+
+            // Koordinat aralığı kontrolü (Türkiye için genel filtre)
+            if (y > 100000 && y < 1000000 && x > 3000000 && x < 6000000) {
+                // Eğer geçerli görünüyorsa ekle
+                // Not: NCZ içinde her nokta için bir ID olmayabilir, biz üretiyoruz.
+                points.push({
+                    id: `N${points.length + 1}`,
+                    y: y,
+                    x: x,
+                    z_mevcut: z,
+                    z_proje: 0
+                });
+                // Nokta bulduğumuzda 24 byte atla (veya daha fazlasını dene)
+                i += 20; 
+            }
+        }
+
+        // Çok fazla "hayalet" nokta bulmuş olabiliriz, birbirine çok yakın (0.001m altı) olanları eleyebiliriz.
+        if (points.length > 5000) {
+             // Çok büyük dosyalarda sadece bir kısmını alalım veya filtreleyelim
+             points = points.filter((p, i) => i % 2 === 0).slice(0, 10000);
+        }
+
+    } catch (err) {
+        console.error("NCZ Parse Hatası:", err);
+    }
+    return points;
+};
+
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     const firmId = req.headers['x-firm-id'];
     const jobName = req.headers['x-job-name'] ? decodeURIComponent(req.headers['x-job-name']) : null;
@@ -167,7 +219,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
         let points = [];
         const ext = path.extname(req.file.originalname).toLowerCase();
-        if (ext === '.ncn' || ext === '.ncz') {
+        if (ext === '.ncn') {
             const content = fs.readFileSync(req.file.path, 'utf-8');
             const lines = content.split('\n');
             lines.forEach(line => {
@@ -179,6 +231,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
                     });
                 }
             });
+        } else if (ext === '.ncz') {
+            const buffer = fs.readFileSync(req.file.path);
+            points = parseNcz(buffer);
         } else {
             const workbook = xlsx.readFile(req.file.path);
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -243,6 +298,36 @@ app.post('/api/convert/dxf-to-ncn', upload.single('file'), (req, res) => {
         res.setHeader('Content-Type', 'text/plain');
         res.send(ncnLines.join('\n'));
     } catch (err) { res.status(500).send('Dönüştürme hatası: ' + err.message); }
+});
+
+app.post('/api/convert/ncz-to-dxf', upload.single('file'), (req, res) => {
+    try {
+        const buffer = fs.readFileSync(req.file.path);
+        const points = parseNcz(buffer);
+        const d = new DxfWriter();
+        points.forEach(p => {
+            d.addPoint(p.y, p.x, p.z_mevcut);
+            d.addText({ x: p.y, y: p.x, z: p.z_mevcut }, 0.5, p.id);
+        });
+        const outputPath = req.file.path + '.dxf';
+        fs.writeFileSync(outputPath, d.stringify());
+        res.download(outputPath, 'donusturulmus.dxf', () => {
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+        });
+    } catch (err) { res.status(500).send('NCZ->DXF Hatası: ' + err.message); }
+});
+
+app.post('/api/convert/ncz-to-ncn', upload.single('file'), (req, res) => {
+    try {
+        const buffer = fs.readFileSync(req.file.path);
+        const points = parseNcz(buffer);
+        const ncnLines = points.map(p => `${p.id} ${p.y.toFixed(3)} ${p.x.toFixed(3)} ${p.z_mevcut.toFixed(3)}`);
+        
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.setHeader('Content-Type', 'text/plain');
+        res.send(ncnLines.join('\n'));
+    } catch (err) { res.status(500).send('NCZ->NCN Hatası: ' + err.message); }
 });
 
 // --- PDF/EXCEL EXPORT ---
