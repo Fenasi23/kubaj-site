@@ -97,10 +97,13 @@ function App() {
     defaultPreparer: '',
     defaultController: ''
   });
+  const [archiveProjects, setArchiveProjects] = useState([]);
+  const [archiveSearch, setArchiveSearch] = useState('');
 
   const navigationItems = [
     { id: 'kubaj', label: 'Kubaj Analizi', icon: <BarChart3 size={18} /> },
     { id: 'hakedis', label: 'Hakediş Yönetimi', icon: <FileCheck size={18} /> },
+    { id: 'archive', label: 'İş Takip Paneli', icon: <LayoutDashboard size={18} /> },
     { id: 'converter', label: 'Format Dönüştürücü', icon: <RefreshCw size={18} /> },
     { id: 'settings', label: 'Ayarlar', icon: <Settings size={18} /> },
   ];
@@ -170,7 +173,14 @@ function App() {
     }
   }, [selectedFirm, API_URL]);
 
-  const lastFetchedRef = useRef({ firmId: null, jobName: null });
+  // Arşiv Projelerini Yükle
+  React.useEffect(() => {
+    if (activeModule === 'archive') {
+      axios.get(`${API_URL}/api/projects/all`).then(r => {
+        setArchiveProjects(r.data);
+      });
+    }
+  }, [activeModule, API_URL]);
 
   // Firma veya Proje Değiştiğinde Verileri Yenile
   React.useEffect(() => {
@@ -450,6 +460,26 @@ function App() {
       if (selectedProject === projectName) setSelectedProject('');
     } catch (err) {
       alert("İş silinemedi.");
+    }
+  };
+
+  const handleDownloadSummaryPdf = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.post(`${API_URL}/api/export/summary-pdf`, {
+        projects: archiveProjects
+      }, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `toplu_proje_ozeti_${Date.now()}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      alert("PDF oluşturulamadı.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -863,6 +893,104 @@ function App() {
                 DXF dosyalarında sadece POINT ve TEXT objeleri işlenmektedir.
               </p>
             </div>
+          </div>
+        );
+
+      case 'archive':
+        const filteredProjects = archiveProjects.filter(p => 
+          p.firmName.toLowerCase().includes(archiveSearch.toLowerCase()) || 
+          p.jobName.toLowerCase().includes(archiveSearch.toLowerCase())
+        );
+
+        return (
+          <div className="module-container anim-fade-in">
+            <header className="module-header">
+              <div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>İş Takip ve Arşiv Paneli</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Tüm Firmalara Ait Kayıtlı İşlerin Özeti</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={handleDownloadSummaryPdf} className="btn" style={{ background: 'var(--primary-color)' }}>
+                    <Download size={18} /> Toplu Özet PDF
+                </button>
+              </div>
+            </header>
+
+            <main className="glass-card">
+              <div style={{ marginBottom: '1.5rem' }}>
+                <input 
+                  type="text" 
+                  placeholder="Firma veya iş adı ile ara..." 
+                  className="table-input" 
+                  style={{ maxWidth: '400px' }}
+                  value={archiveSearch}
+                  onChange={e => setArchiveSearch(e.target.value)}
+                />
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Firma Adı</th>
+                      <th>İş (Proje) Adı</th>
+                      <th>Net Hacim</th>
+                      <th>Kazı/Dolgu</th>
+                      <th>Son Güncelleme</th>
+                      <th>İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProjects.map((p, idx) => (
+                      <tr key={`${p.firmId}-${p.jobName}-${idx}`}>
+                        <td style={{ fontWeight: 600 }}>{p.firmName}</td>
+                        <td>{p.jobName}</td>
+                        <td style={{ color: 'var(--primary-color)', fontWeight: 700 }}>
+                          {p.kubaj.totalVolume.toLocaleString('tr-TR')} m³
+                        </td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                           K: {p.kubaj.cutVolume.toLocaleString('tr-TR')} / D: {p.kubaj.fillVolume.toLocaleString('tr-TR')}
+                        </td>
+                        <td>{new Date(p.updatedAt).toLocaleDateString('tr-TR')}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button 
+                              onClick={() => {
+                                const firm = firms.find(f => f.id === p.firmId);
+                                if (firm) {
+                                  setSelectedFirm(firm);
+                                  setSelectedProject(p.jobName);
+                                  setActiveModule('kubaj');
+                                }
+                              }} 
+                              className="btn-icon-small" 
+                              title="Göz At"
+                            >
+                              <ChevronRight size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteProject(p.firmId, p.jobName)} 
+                              className="btn-icon-small" 
+                              style={{ color: 'var(--error-color)' }}
+                              title="Sil"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredProjects.length === 0 && (
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                          Herhangi bir kayıtlı iş bulunamadı.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </main>
           </div>
         );
 

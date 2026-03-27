@@ -293,6 +293,23 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     } catch (err) { res.status(500).send('Hesaplama hatası: ' + err.message); }
 });
 
+app.get('/api/projects/all', async (req, res) => {
+    try {
+        const projects = await Project.find().sort({ updatedAt: -1 });
+        const firms = await Firm.find();
+        const firmMap = firms.reduce((acc, f) => ({ ...acc, [f.id]: f.name }), {});
+        
+        const summary = projects.map(p => ({
+            firmId: p.firmId,
+            firmName: firmMap[p.firmId] || 'Bilinmeyen Firma',
+            jobName: p.jobName,
+            updatedAt: p.updatedAt,
+            kubaj: p.kubajData?.results || { cutVolume: 0, fillVolume: 0, totalVolume: 0 }
+        }));
+        res.json(summary);
+    } catch (err) { res.status(500).send('Projeler çekilemedi.'); }
+});
+
 // --- FORMAT DÖNÜŞTÜRÜCÜ (NCN <-> DXF) ---
 app.post('/api/convert/ncn-to-dxf', upload.single('file'), (req, res) => {
     try {
@@ -533,7 +550,44 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         doc.text(details.kontrolEdenAdi || '', 350, footerY + 20, { width: 150, align: 'center' });
 
         doc.end();
-    } catch (err) { res.status(500).send('Hakediş PDF Hatası: ' + err.message); }
+app.post('/api/export/summary-pdf', async (req, res) => {
+    try {
+        const { projects } = req.body;
+        const settings = await Settings.findOne() || { companyName: 'MUHAMMED BİLİCİ - HARİTA ÇÖZÜMLERİ' };
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        res.setHeader('Content-Type', 'application/pdf');
+        doc.pipe(res);
+
+        if (fs.existsSync(fontBold)) doc.font(fontBold);
+        doc.fontSize(16).text(settings.companyName.toUpperCase(), { align: 'center' });
+        doc.fontSize(12).text('TOPLU PROJE ÖZET RAPORU', { align: 'center', underline: true });
+        doc.moveDown(2);
+
+        doc.fontSize(10);
+        const drawHeader = (y) => {
+            doc.text('Firma Adı', 40, y, { width: 120 });
+            doc.text('İş (Proje) Adı', 160, y, { width: 150 });
+            doc.text('Net Hacim (m³)', 310, y, { width: 100, align: 'right' });
+            doc.text('Tarih', 420, y, { width: 120, align: 'right' });
+            doc.moveTo(40, y + 15).lineTo(550, y + 15).stroke();
+        };
+
+        drawHeader(doc.y);
+        doc.moveDown(1);
+        
+        if (fs.existsSync(fontRegular)) doc.font(fontRegular);
+        projects.forEach(p => {
+            if (doc.y > 750) { doc.addPage(); drawHeader(50); doc.moveDown(1); }
+            const y = doc.y;
+            doc.text(p.firmName, 40, y, { width: 120, lineBreak: false });
+            doc.text(p.jobName, 160, y, { width: 150, lineBreak: false });
+            doc.text(`${p.kubaj?.totalVolume?.toLocaleString('tr-TR')} m³`, 310, y, { width: 100, align: 'right' });
+            doc.text(new Date(p.updatedAt).toLocaleDateString('tr-TR'), 420, y, { width: 120, align: 'right' });
+            doc.moveDown(1.5);
+        });
+
+        doc.end();
+    } catch (err) { res.status(500).send('PDF Hatası: ' + err.message); }
 });
 
 module.exports = app;
