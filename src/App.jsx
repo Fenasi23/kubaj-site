@@ -182,6 +182,25 @@ function App() {
     }
   }, [activeModule, API_URL]);
 
+  // Hakediş Bilgilerini Seçimle Senkronize Et (Otomatik Doldurma)
+  React.useEffect(() => {
+    if (selectedProject || selectedFirm) {
+      setHakedisDetails(prev => {
+        const needsUpdatePath = !prev.isinAdi || prev.isinAdi === '';
+        const needsUpdateFirm = !prev.yukleniciFirma || prev.yukleniciFirma === '';
+        
+        if (needsUpdatePath || needsUpdateFirm) {
+          return {
+            ...prev,
+            isinAdi: needsUpdatePath ? (selectedProject || '') : prev.isinAdi,
+            yukleniciFirma: needsUpdateFirm ? (selectedFirm?.name || '') : prev.yukleniciFirma
+          };
+        }
+        return prev;
+      });
+    }
+  }, [selectedProject, selectedFirm]);
+
   // Firma veya Proje Değiştiğinde Verileri Yenile
   React.useEffect(() => {
     const fetchData = async () => {
@@ -198,7 +217,9 @@ function App() {
         if (hResp.data && hResp.data.details) {
             setHakedisDetails({
               ...hResp.data.details,
-              birimFiyat: hResp.data.details.birimFiyat ?? 0
+              birimFiyat: hResp.data.details.birimFiyat ?? 0,
+              isinAdi: hResp.data.details.isinAdi || selectedProject || '',
+              yukleniciFirma: hResp.data.details.yukleniciFirma || selectedFirm?.name || ''
             });
             setHakedisData(Array.isArray(hResp.data.data) ? hResp.data.data : []);
         } else {
