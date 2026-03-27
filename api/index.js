@@ -480,7 +480,8 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         const infoRow = (label, value) => {
             const y = doc.y;
             doc.text(label, labelX, y);
-            doc.text(value, valueX, y);
+            // Genişlik eklendi ve lineBreak kapatıldı
+            doc.text(value, valueX, y, { width: 350, lineBreak: false });
             doc.moveDown(0.5);
         };
 
@@ -498,18 +499,18 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         
         const volY = doc.y;
         doc.text('Hakedişe Esas Net Hacim:', labelX, volY); 
-        doc.text(`${calculation?.totalVolume?.toLocaleString('tr-TR')} m³`, valueX + 50, volY, { align: 'right', width: 100 });
+        doc.text(`${calculation?.totalVolume?.toLocaleString('tr-TR')} m³`, valueX + 50, volY, { align: 'right', width: 200, lineBreak: false });
         doc.moveDown(0.5);
 
         const priceY = doc.y;
         doc.text('Birim Fiyat:', labelX, priceY); 
-        doc.text(`${details.birimFiyat?.toLocaleString('tr-TR')} TL/m³`, valueX + 50, priceY, { align: 'right', width: 100 });
+        doc.text(`${details.birimFiyat?.toLocaleString('tr-TR')} TL/m³`, valueX + 50, priceY, { align: 'right', width: 200, lineBreak: false });
         doc.moveDown(0.8);
         
         if (fs.existsSync(fontBold)) doc.font(fontBold);
         const totalY = doc.y;
         doc.text('Kubaj Hakediş Tutarı:', labelX, totalY); 
-        doc.text(`${(calculation?.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, valueX + 50, totalY, { align: 'right', width: 100 });
+        doc.text(`${(calculation?.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, valueX + 50, totalY, { align: 'right', width: 200, lineBreak: false });
         doc.moveDown(3);
 
         // İMZA ALANI
