@@ -114,6 +114,59 @@ function Terrain3D({ points, onSelectPoint, selectedPoints = [], isProfileMode =
   );
 }
 
+function Login({ username, password, setUsername, setPassword, error, loading, onLogin }) {
+  return (
+    <div className="login-container">
+      <div className="login-card anim-scale-in">
+        <div className="login-logo">
+          <HardHat size={32} color="white" />
+        </div>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>Harita Portalı</h1>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Lütfen devam etmek için giriş yapın</p>
+        
+        {error && <div className="login-error">{error}</div>}
+        
+        <form onSubmit={onLogin}>
+          <div className="login-input-group">
+            <label>Kullanıcı Adı</label>
+            <input 
+              type="text" 
+              className="login-input" 
+              value={username} 
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="admin"
+              required
+            />
+          </div>
+          <div className="login-input-group">
+            <label>Şifre</label>
+            <input 
+              type="password" 
+              className="login-input" 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+          <button 
+            type="submit" 
+            className="btn" 
+            style={{ width: '100%', justifyContent: 'center', marginTop: '1rem', padding: '1rem' }}
+            disabled={loading}
+          >
+            {loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
+          </button>
+        </form>
+        
+        <p style={{ marginTop: '2rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          © 2024 Muhammed BİLİCİ - Tüm Hakları Saklıdır.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [activeModule, setActiveModule] = useState('kubaj');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -123,6 +176,22 @@ function App() {
   const [activeTab, setActiveTab] = useState('data');
   const [hakedisData, setHakedisData] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // AUTH STATE
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('auth_token'));
+  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('auth_username'));
+  const [currentRole, setCurrentRole] = useState(() => localStorage.getItem('auth_role'));
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // ADMIN PANEL STATE
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [loginLogs, setLoginLogs] = useState([]);
+  const [newUserForm, setNewUserForm] = useState({ username: '', password: '', role: 'user' });
+  const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '' });
+  const [adminSettingsTab, setAdminSettingsTab] = useState('profile');
   
   // Profil (Kesit) State
   const [isProfileMode, setIsProfileMode] = useState(false);
@@ -187,6 +256,79 @@ function App() {
       } 
     };
   }, [selectedFirm, selectedProject]);
+
+  // AUTH Header Hazırla
+  const getAuthHeaders = React.useCallback(() => {
+    const token = localStorage.getItem('auth_token');
+    return token ? { headers: { 'Authorization': `Bearer ${token}` } } : { headers: {} };
+  }, []);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const resp = await axios.post(`${API_URL}/api/auth/login`, { username: loginUsername, password: loginPassword });
+      localStorage.setItem('auth_token', resp.data.token);
+      localStorage.setItem('auth_username', resp.data.username);
+      localStorage.setItem('auth_role', resp.data.role);
+      setAuthToken(resp.data.token);
+      setCurrentUser(resp.data.username);
+      setCurrentRole(resp.data.role);
+      setLoginUsername('');
+      setLoginPassword('');
+    } catch (err) {
+      setLoginError(err.response?.data?.error || 'Giriş yapılamadı.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_username');
+    localStorage.removeItem('auth_role');
+    setAuthToken(null);
+    setCurrentUser(null);
+    setCurrentRole(null);
+  };
+
+  const fetchAdminData = async () => {
+    try {
+      const [usersRes, logsRes] = await Promise.all([
+        axios.get(`${API_URL}/api/admin/users`, getAuthHeaders()),
+        axios.get(`${API_URL}/api/admin/login-logs`, getAuthHeaders())
+      ]);
+      setAdminUsers(usersRes.data);
+      setLoginLogs(logsRes.data);
+    } catch(e) { console.error('Admin veri çekilemedi', e); }
+  };
+
+  const handleAddUser = async () => {
+    if (!newUserForm.username || !newUserForm.password) return alert('Kullanıcı adı ve şifre gereklidir.');
+    try {
+      await axios.post(`${API_URL}/api/admin/users`, newUserForm, getAuthHeaders());
+      setNewUserForm({ username: '', password: '', role: 'user' });
+      await fetchAdminData();
+    } catch(e) { alert(e.response?.data?.error || 'Kullanıcı eklenemedi.'); }
+  };
+
+  const handleDeleteUser = async (id) => {
+    if (!confirm('Bu kullanıcıyı silmek istediğinize emin misiniz?')) return;
+    try {
+      await axios.delete(`${API_URL}/api/admin/users/${id}`, getAuthHeaders());
+      await fetchAdminData();
+    } catch(e) { alert(e.response?.data?.error || 'Silinemedi.'); }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API_URL}/api/auth/change-password`, changePasswordForm, getAuthHeaders());
+      alert('Şifreniz başarıyla değiştirildi!');
+      setChangePasswordForm({ currentPassword: '', newPassword: '' });
+    } catch(e) { alert(e.response?.data?.error || 'Şifre değiştirilemedi.'); }
+  };
 
   // Firmaları Yükle
   React.useEffect(() => {
@@ -1203,227 +1345,244 @@ function App() {
           </div>
         );
 
-      case 'archive':
-        const filteredProjects = archiveProjects.filter(p => 
-          p.firmName.toLowerCase().includes(archiveSearch.toLowerCase()) || 
-          p.jobName.toLowerCase().includes(archiveSearch.toLowerCase())
-        );
-
-        return (
-          <div className="module-container anim-fade-in">
-            <header className="module-header">
-              <div>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>İş Takip ve Arşiv Paneli</h2>
-                <p style={{ color: 'var(--text-muted)' }}>Tüm Firmalara Ait Kayıtlı İşlerin Özeti</p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={handleDownloadSummaryPdf} className="btn" style={{ background: 'var(--primary-color)' }}>
-                    <Download size={18} /> Toplu Özet PDF
-                </button>
-              </div>
-            </header>
-
-            <main className="glass-card">
-              <div style={{ marginBottom: '1.5rem' }}>
-                <input 
-                  type="text" 
-                  placeholder="Firma veya iş adı ile ara..." 
-                  className="table-input" 
-                  style={{ maxWidth: '400px' }}
-                  value={archiveSearch}
-                  onChange={e => setArchiveSearch(e.target.value)}
-                />
-              </div>
-
-              <div style={{ overflowX: 'auto' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Firma Adı</th>
-                      <th>İş (Proje) Adı</th>
-                      <th>Net Hacim</th>
-                      <th>Kazı/Dolgu</th>
-                      <th>Son Güncelleme</th>
-                      <th>İşlemler</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProjects.map((p, idx) => (
-                      <tr key={`${p.firmId}-${p.jobName}-${idx}`}>
-                        <td style={{ fontWeight: 600 }}>{p.firmName}</td>
-                        <td>{p.jobName}</td>
-                        <td style={{ color: 'var(--primary-color)', fontWeight: 700 }}>
-                          {p.kubaj.totalVolume.toLocaleString('tr-TR')} m³
-                        </td>
-                        <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                           K: {p.kubaj.cutVolume.toLocaleString('tr-TR')} / D: {p.kubaj.fillVolume.toLocaleString('tr-TR')}
-                        </td>
-                        <td>{new Date(p.updatedAt).toLocaleDateString('tr-TR')}</td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button 
-                              onClick={() => {
-                                const firm = firms.find(f => f.id === p.firmId);
-                                if (firm) {
-                                  setSelectedFirm(firm);
-                                  setSelectedProject(p.jobName);
-                                  setActiveModule('kubaj');
-                                }
-                              }} 
-                              className="btn-icon-small" 
-                              title="Göz At"
-                            >
-                              <ChevronRight size={16} />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteProject(p.firmId, p.jobName)} 
-                              className="btn-icon-small" 
-                              style={{ color: 'var(--error-color)' }}
-                              title="Sil"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredProjects.length === 0 && (
-                      <tr>
-                        <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                          Herhangi bir kayıtlı iş bulunamadı.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </main>
-          </div>
-        );
-
       case 'settings':
         return (
           <div className="module-container anim-fade-in">
             <header className="module-header">
               <div>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Ayarlar</h2>
-                <p style={{ color: 'var(--text-muted)' }}>Profil, Firma ve Uygulama Tercihleri</p>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Ayarlar ve Profil</h2>
+                <p style={{ color: 'var(--text-muted)' }}>
+                  {adminSettingsTab === 'profile' && 'Kişisel profil ve şifre işlemleri'}
+                  {adminSettingsTab === 'company' && 'Kurumsal bilgiler ve uygulama tercihleri'}
+                  {adminSettingsTab === 'users' && 'Sistem kullanıcılarını yönetin'}
+                  {adminSettingsTab === 'logs' && 'Sisteme erişim kayıtlarını inceleyin'}
+                </p>
               </div>
-              <button 
-                onClick={async () => {
-                  try {
-                    await axios.post(`${API_URL}/api/settings`, settings);
-                    // Analiz yüklendiğinde hakediş bilgilerini de güncelle (eğer boşsa)
-      setHakedisDetails(prev => ({
-        ...prev,
-        isinAdi: prev.isinAdi || selectedProject || '',
-        yukleniciFirma: prev.yukleniciFirma || selectedFirm?.name || ''
-      }));
-
-      alert('Dosya başarıyla yüklendi ve analiz edildi.');
-                  } catch(e) { alert("Kaydetme hatası!"); }
-                }} 
-                className="btn"
-              >
-                Değişiklikleri Kaydet
-              </button>
+              {adminSettingsTab === 'company' && (
+                <button 
+                  onClick={async () => {
+                    try {
+                      await axios.post(`${API_URL}/api/settings`, settings, getAuthHeaders());
+                      alert('Ayarlar başarıyla kaydedildi.');
+                    } catch(e) { alert("Kaydetme hatası!"); }
+                  }} 
+                  className="btn"
+                >
+                  Değişiklikleri Kaydet
+                </button>
+              )}
             </header>
 
-            <main className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-              <section className="glass-card">
-                <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Building2 size={20} color="var(--primary-color)" /> Kurumsal Bilgiler
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Firma/Kurum Adı</label>
-                    <input 
-                      className="table-input" 
-                      value={settings.companyName} 
-                      onChange={e => setSettings({...settings, companyName: e.target.value})} 
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Adres / İletişim</label>
-                    <textarea 
-                      className="table-input" 
-                      style={{ height: '80px', padding: '10px' }}
-                      value={settings.companyAddress} 
-                      onChange={e => setSettings({...settings, companyAddress: e.target.value})} 
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Firma Logosu (Opsiyonel)</label>
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                      {settings.companyLogo ? (
-                        <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', background: '#fff' }}>
-                          <img src={settings.companyLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                          <button 
-                            onClick={() => setSettings({...settings, companyLogo: ''})} 
-                            style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(239, 68, 68, 0.9)', border: 'none', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title="Logoyu Kaldır"
-                          >
-                            ✕
-                          </button>
+            <div className="settings-tabs">
+              <button 
+                className={`settings-tab-btn ${adminSettingsTab === 'profile' ? 'active' : ''}`}
+                onClick={() => setAdminSettingsTab('profile')}
+              >
+                Profil (Şifre)
+              </button>
+              <button 
+                className={`settings-tab-btn ${adminSettingsTab === 'company' ? 'active' : ''}`}
+                onClick={() => setAdminSettingsTab('company')}
+              >
+                Kurumsal
+              </button>
+              {currentRole === 'admin' && (
+                <>
+                  <button 
+                    className={`settings-tab-btn ${adminSettingsTab === 'users' ? 'active' : ''}`}
+                    onClick={() => { setAdminSettingsTab('users'); fetchAdminData(); }}
+                  >
+                    Kullanıcı Yönetimi
+                  </button>
+                  <button 
+                    className={`settings-tab-btn ${adminSettingsTab === 'logs' ? 'active' : ''}`}
+                    onClick={() => { setAdminSettingsTab('logs'); fetchAdminData(); }}
+                  >
+                    Giriş Logları
+                  </button>
+                </>
+              )}
+            </div>
+
+            <main>
+              {adminSettingsTab === 'profile' && (
+                <div style={{ maxWidth: '500px' }}>
+                  <section className="glass-card">
+                    <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <HardHat size={20} color="var(--primary-color)" /> Şifre Değiştir
+                    </h3>
+                    <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div className="form-group">
+                        <label>Mevcut Şifre</label>
+                        <input 
+                          type="password" 
+                          className="table-input" 
+                          required
+                          value={changePasswordForm.currentPassword}
+                          onChange={e => setChangePasswordForm({...changePasswordForm, currentPassword: e.target.value})}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Yeni Şifre (En az 4 karakter)</label>
+                        <input 
+                          type="password" 
+                          className="table-input" 
+                          required
+                          value={changePasswordForm.newPassword}
+                          onChange={e => setChangePasswordForm({...changePasswordForm, newPassword: e.target.value})}
+                        />
+                      </div>
+                      <button type="submit" className="btn" style={{ marginTop: '1rem' }}>Şifreyi Güncelle</button>
+                    </form>
+                  </section>
+                </div>
+              )}
+
+              {adminSettingsTab === 'company' && (
+                <div className="grid">
+                  <section className="glass-card">
+                    <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Building2 size={20} color="var(--primary-color)" /> Kurumsal Bilgiler
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div className="form-group">
+                        <label>Firma/Kurum Adı</label>
+                        <input 
+                          className="table-input" 
+                          value={settings.companyName} 
+                          onChange={e => setSettings({...settings, companyName: e.target.value})} 
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Adres / İletişim</label>
+                        <textarea 
+                          className="table-input" 
+                          style={{ height: '80px', padding: '10px' }}
+                          value={settings.companyAddress} 
+                          onChange={e => setSettings({...settings, companyAddress: e.target.value})} 
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Firma Logosu (Maks: 500KB)</label>
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                          {settings.companyLogo ? (
+                            <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', background: '#fff' }}>
+                              <img src={settings.companyLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                              <button onClick={() => setSettings({...settings, companyLogo: ''})} style={{ position: 'absolute', top: 2, right: 2, background: 'red', border: 'none', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer' }}>✕</button>
+                            </div>
+                          ) : <div style={{ width: '80px', height: '80px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', border: '1px dashed #444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Yok</div>}
+                          <input type="file" id="logoUp" hidden onChange={handleLogoUpload} />
+                          <label htmlFor="logoUp" className="btn btn-secondary" style={{ cursor: 'pointer', padding: '0.4rem 0.8rem' }}>Logo Seç</label>
                         </div>
-                      ) : (
-                        <div style={{ width: '80px', height: '80px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', border: '1px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                          Yok
-                        </div>
-                      )}
-                      <div>
-                        <input type="file" id="logoUpload" accept="image/png, image/jpeg" style={{ display: 'none' }} onChange={handleLogoUpload} />
-                        <label htmlFor="logoUpload" className="btn btn-secondary" style={{ cursor: 'pointer', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
-                          <Upload size={14} style={{ marginRight: '6px' }} /> Logo Seç
-                        </label>
-                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-muted)' }}>PNG/JPG, Maks: 500KB</p>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </section>
+                  </section>
 
-              <section className="glass-card">
-                <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <HardHat size={20} color="var(--primary-color)" /> Profil ve İmzalar
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Ad Soyad</label>
-                    <input 
-                      className="table-input" 
-                      value={settings.userName} 
-                      onChange={e => setSettings({...settings, userName: e.target.value})} 
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Ünvan</label>
-                    <input 
-                      className="table-input" 
-                      value={settings.userTitle} 
-                      onChange={e => setSettings({...settings, userTitle: e.target.value})} 
-                    />
-                  </div>
-                  <hr style={{ border: 'none', borderTop: '1px solid var(--glass-border)', margin: '0.5rem 0' }} />
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Varsayılan Hazırlayan (İmza)</label>
-                    <input 
-                      className="table-input" 
-                      placeholder="Örn: Muhammed Bilici - Harita Mühendisi"
-                      value={settings.defaultPreparer} 
-                      onChange={e => setSettings({...settings, defaultPreparer: e.target.value})} 
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Varsayılan Kontrol/Onay (İmza)</label>
-                    <input 
-                      className="table-input" 
-                      value={settings.defaultController} 
-                      onChange={e => setSettings({...settings, defaultController: e.target.value})} 
-                    />
-                  </div>
+                  <section className="glass-card">
+                    <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Pencil size={20} color="var(--primary-color)" /> Varsayılan İmzalar
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div className="form-group">
+                        <label>Varsayılan Hazırlayan</label>
+                        <input className="table-input" value={settings.defaultPreparer} onChange={e => setSettings({...settings, defaultPreparer: e.target.value})} />
+                      </div>
+                      <div className="form-group">
+                        <label>Varsayılan Kontrol Eden</label>
+                        <input className="table-input" value={settings.defaultController} onChange={e => setSettings({...settings, defaultController: e.target.value})} />
+                      </div>
+                    </div>
+                  </section>
                 </div>
-              </section>
+              )}
+
+              {adminSettingsTab === 'users' && currentRole === 'admin' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                  <section className="glass-card">
+                    <h3 style={{ marginBottom: '1.5rem' }}>Yeni Kullanıcı Oluştur</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '1rem', alignItems: 'flex-end' }}>
+                      <div className="form-group">
+                        <label>Kullanıcı Adı</label>
+                        <input className="table-input" value={newUserForm.username} onChange={e => setNewUserForm({...newUserForm, username: e.target.value})} />
+                      </div>
+                      <div className="form-group">
+                        <label>Şifre</label>
+                        <input className="table-input" type="password" value={newUserForm.password} onChange={e => setNewUserForm({...newUserForm, password: e.target.value})} />
+                      </div>
+                      <div className="form-group">
+                        <label>Rol</label>
+                        <select className="table-input" value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value})}>
+                          <option value="user">Normal Kullanıcı</option>
+                          <option value="admin">Admin (Tam Yetki)</option>
+                        </select>
+                      </div>
+                      <button onClick={handleAddUser} className="btn"><Plus size={18} /> Ekle</button>
+                    </div>
+                  </section>
+
+                  <section className="glass-card">
+                    <h3 style={{ marginBottom: '1.5rem' }}>Sistem Kullanıcıları</h3>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Kullanıcı Adı</th>
+                            <th>Rol</th>
+                            <th>Oluşturulma</th>
+                            <th>İşlemler</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {adminUsers.map(u => (
+                            <tr key={u._id}>
+                              <td style={{ fontWeight: 600 }}>{u.username}</td>
+                              <td><span style={{ padding: '2px 8px', borderRadius: '4px', background: u.role === 'admin' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', color: u.role === 'admin' ? 'var(--primary-color)' : 'inherit', fontSize: '0.8rem' }}>{u.role.toUpperCase()}</span></td>
+                              <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{new Date(u.createdAt).toLocaleDateString('tr-TR')}</td>
+                              <td>
+                                {u.username !== 'admin' && (
+                                  <button onClick={() => handleDeleteUser(u._id)} className="btn-icon-small" style={{ color: 'var(--error-color)' }}><Trash2 size={16} /></button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+              )}
+
+              {adminSettingsTab === 'logs' && currentRole === 'admin' && (
+                <section className="glass-card">
+                  <h3 style={{ marginBottom: '1.5rem' }}>Son Giriş Denemeleri</h3>
+                  <div style={{ overflowX: 'auto', maxHeight: '600px' }}>
+                    <table>
+                      <thead style={{ position: 'sticky', top: 0, background: 'var(--sidebar-bg)' }}>
+                        <tr>
+                          <th>Kullanıcı</th>
+                          <th>IP Adresi</th>
+                          <th>Tarih / Saat</th>
+                          <th>Durum</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loginLogs.map((log, i) => (
+                          <tr key={i}>
+                            <td>{log.username}</td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{log.ip}</td>
+                            <td style={{ fontSize: '0.85rem' }}>{new Date(log.timestamp).toLocaleString('tr-TR')}</td>
+                            <td>
+                              <span style={{ color: log.success ? '#10b981' : '#ef4444', fontWeight: 600, fontSize: '0.8rem' }}>
+                                {log.success ? 'BAŞARILI' : 'HATALI'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
             </main>
           </div>
         );
@@ -1594,6 +1753,20 @@ function App() {
     }
   };
 
+  if (!authToken) {
+    return (
+      <Login 
+        username={loginUsername}
+        password={loginPassword}
+        setUsername={setLoginUsername}
+        setPassword={setLoginPassword}
+        error={loginError}
+        loading={loginLoading}
+        onLogin={handleLogin}
+      />
+    );
+  }
+
   return (
     <div className="dashboard-container">
       {/* Mobil Toggle */}
@@ -1759,13 +1932,31 @@ function App() {
         )}
 
         <div className="sidebar-footer" style={{ padding: '1rem', borderTop: '1px solid var(--glass-border)' }}>
-          <button 
-            className="btn btn-secondary" 
-            style={{ width: '100%', justifyContent: 'center', padding: '0.5rem' }}
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          >
-            {isSidebarCollapsed ? <ChevronRight size={18} /> : <X size={18} />}
-          </button>
+          <div style={{ marginBottom: '1rem', padding: '0.5rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Giriş Yapan:</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
+              {currentUser}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 600 }}>{currentRole?.toUpperCase()}</div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              className="btn btn-secondary" 
+              style={{ flex: 1, justifyContent: 'center', padding: '0.5rem' }}
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            >
+              {isSidebarCollapsed ? <ChevronRight size={18} /> : <X size={18} />}
+            </button>
+            <button 
+              className="btn" 
+              style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
+              onClick={handleLogout}
+              title="Çıkış Yap"
+            >
+              <X size={18} /> 
+            </button>
+          </div>
         </div>
       </aside>
 

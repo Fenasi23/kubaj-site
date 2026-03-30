@@ -7,9 +7,12 @@ const xlsx = require('xlsx');
 const mongoose = require('mongoose');
 const PDFDocument = require('pdfkit');
 const { DxfWriter } = require('@tarikjabiri/dxf');
-
 const DxfParser = require('dxf-parser');
 const zlib = require('zlib');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'kubaj_gizli_anahtar_2024_degistirin';
 
 const app = express();
 
@@ -76,12 +79,133 @@ const SettingsSchema = new mongoose.Schema({
 });
 const Settings = mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);
 
+const UserSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true },
+    passwordHash: { type: String, required: true },
+    role: { type: String, enum: ['admin', 'user'], default: 'user' },
+    createdAt: { type: Date, default: Date.now }
+});
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
+
+const LoginLogSchema = new mongoose.Schema({
+    username: String,
+    ip: String,
+    success: Boolean,
+    timestamp: { type: Date, default: Date.now }
+});
+const LoginLog = mongoose.models.LoginLog || mongoose.model('LoginLog', LoginLogSchema);
+
 // --- MIDDLEWARE ---
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// --- AUTH MIDDLEWARE ---
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Token bulunamadı.' });
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: 'Token geçersiz veya süresi dolmuş.' });
+        req.user = user;
+        next();
+    });
+};
+
+const requireAdmin = (req, res, next) => {
+    if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Bu işlem sadece admin tarafından yapılabilir.' });
+    next();
+};
+
 // --- API ENDPOINTS ---
+
+// AUTH: Login
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Bilinmiyor';
+    try {
+        const user = await User.findOne({ username });
+        if (!user) {
+            await LoginLog.create({ username, ip, success: false });
+            return res.status(401).json({ error: 'Kullanıcı adı veya şifre yanlış.' });
+        }
+        const isMatch = await bcrypt.compare(password, user.passwordHash);
+        if (!isMatch) {
+            await LoginLog.create({ username, ip, success: false });
+            return res.status(401).json({ error: 'Kullanıcı adı veya şifre yanlış.' });
+        }
+        await LoginLog.create({ username, ip, success: true });
+        const token = jwt.sign({ id: user._id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+        res.json({ token, role: user.role, username: user.username });
+    } catch (err) { res.status(500).json({ error: 'Sunucu hatası: ' + err.message }); }
+});
+
+// AUTH: Change Own Password
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!newPassword || newPassword.length < 4) return res.status(400).json({ error: 'Yeni şifre en az 4 karakter olmalıdır.' });
+    try {
+        const user = await User.findById(req.user.id);
+        const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+        if (!isMatch) return res.status(401).json({ error: 'Mevcut şifre yanlış.' });
+        user.passwordHash = await bcrypt.hash(newPassword, 10);
+        await user.save();
+        res.json({ message: 'Şifre başarıyla güncellendi.' });
+    } catch (err) { res.status(500).json({ error: 'Sunucu hatası.' }); }
+});
+
+// ADMIN: Seed first admin user (ilk kurulumda bir kez kullanın)
+app.get('/api/auth/seed-admin', async (req, res) => {
+    try {
+        const existing = await User.findOne({ username: 'admin' });
+        if (existing) return res.status(400).json({ error: 'Admin kullanıcısı zaten mevcut.' });
+        const passwordHash = await bcrypt.hash('admin123', 10);
+        await User.create({ username: 'admin', passwordHash, role: 'admin' });
+        res.json({ message: 'Admin kullanıcısı oluşturuldu. Kullanıcı adı: admin, Şifre: admin123 (hemen değiştirin!)' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ADMIN: List Users
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const users = await User.find().select('-passwordHash').sort({ createdAt: -1 });
+        res.json(users);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ADMIN: Create User
+app.post('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+    const { username, password, role } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Kullanıcı adı ve şifre gereklidir.' });
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        const user = await User.create({ username, passwordHash, role: role || 'user' });
+        res.json({ id: user._id, username: user.username, role: user.role });
+    } catch (err) {
+        if (err.code === 11000) return res.status(409).json({ error: 'Bu kullanıcı adı zaten alınmış.' });
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ADMIN: Delete User
+app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (user?.role === 'admin') return res.status(400).json({ error: 'Admin kullanıcısı silinemez.' });
+        await User.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Kullanıcı silindi.' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ADMIN: Login Logs
+app.get('/api/admin/login-logs', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const logs = await LoginLog.find().sort({ timestamp: -1 }).limit(200);
+        res.json(logs);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- FIRM ENDPOINTS ---
 
 app.get('/api/firms', async (req, res) => {
     try {
