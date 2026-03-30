@@ -1113,6 +1113,73 @@ function App() {
             </main>
           </div>
         );
+      case 'archive':
+        const filteredArchives = archiveProjects.filter(p => 
+          (p.jobName || '').toLowerCase().includes(archiveSearch.toLowerCase()) || 
+          (p.firmName || '').toLowerCase().includes(archiveSearch.toLowerCase())
+        );
+
+        return (
+          <div className="module-container anim-fade-in">
+            <header className="module-header">
+              <div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>İş Takip ve Arşiv Paneli</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Tüm firmaların ve projelerin merkezi özeti</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={handleDownloadSummaryPdf} className="btn" style={{ background: '#ef4444' }} disabled={loading}>
+                  <FileText size={18} /> {loading ? 'Hazırlanıyor...' : 'Toplu Özet PDF İndir'}
+                </button>
+              </div>
+            </header>
+
+            <main>
+              <section className="glass-card" style={{ marginBottom: '2rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                  <h3 style={{ fontSize: '1.2rem' }}>Kayıtlı Projeler</h3>
+                  <input 
+                    type="text" 
+                    placeholder="İş veya Firma Ara..." 
+                    className="table-input" 
+                    style={{ width: '300px', maxWidth: '100%' }}
+                    value={archiveSearch}
+                    onChange={(e) => setArchiveSearch(e.target.value)}
+                  />
+                </div>
+                
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="hakedis-table">
+                    <thead>
+                      <tr>
+                        <th>Firma Adı</th>
+                        <th>İş Adı</th>
+                        <th>Kazı Hacmi</th>
+                        <th>Dolgu Hacmi</th>
+                        <th>Net Hacim</th>
+                        <th>Son Güncelleme</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredArchives.map((proj, idx) => (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 600 }}>{proj.firmName}</td>
+                          <td>{proj.jobName}</td>
+                          <td style={{ color: 'var(--error-color)' }}>{(proj.kubaj?.cutVolume || 0).toLocaleString('tr-TR')} m³</td>
+                          <td style={{ color: 'var(--accent-color)' }}>{(proj.kubaj?.fillVolume || 0).toLocaleString('tr-TR')} m³</td>
+                          <td style={{ fontWeight: 700, color: 'var(--primary-color)' }}>{(proj.kubaj?.totalVolume || 0).toLocaleString('tr-TR')} m³</td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(proj.updatedAt).toLocaleDateString('tr-TR')}</td>
+                        </tr>
+                      ))}
+                      {filteredArchives.length === 0 && (
+                        <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>{archiveProjects.length === 0 ? 'Henüz kaydedilmiş bir proje bulunmuyor.' : 'Aramanızla eşleşen proje bulunamadı.'}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </main>
+          </div>
+        );
       default:
         return null;
     }
