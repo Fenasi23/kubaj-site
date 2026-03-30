@@ -6,8 +6,18 @@ import {
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
   Plus, PlusSquare, Building2, FileCheck, RefreshCw
 } from 'lucide-react';
-import { Canvas, useFrame } from 'react-three-fiber';
+import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+extend({ OrbitControls });
+
+function MapControls() {
+  const { camera, gl } = useThree();
+  const controlsRef = useRef();
+  useFrame(() => controlsRef.current && controlsRef.current.update());
+  return <orbitControls ref={controlsRef} args={[camera, gl.domElement]} enableDamping={true} />;
+}
 
 // 3D Arazi Bileşeni
 function Terrain3D({ points, onSelectPoint, selectedPoints = [], isProfileMode = false }) {
@@ -42,7 +52,7 @@ function Terrain3D({ points, onSelectPoint, selectedPoints = [], isProfileMode =
   }, [points]);
 
   useFrame(() => {
-    if (groupRef.current) groupRef.current.rotation.z += 0.005;
+    // groupRef.current.rotation.z += 0.005; // Auto-rotation kapatıldı
   });
 
   if (normalizedPoints.length === 0) return null;
@@ -60,10 +70,10 @@ function Terrain3D({ points, onSelectPoint, selectedPoints = [], isProfileMode =
               }
             }}
           >
-            <sphereGeometry args={[isProfileMode && selectedPoints.some(sp => sp.id === points[i].id) ? 0.6 : 0.3, 16, 16]} />
+            <sphereGeometry args={[isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? 0.6 : 0.3, 16, 16]} />
             <meshStandardMaterial 
-              color={isProfileMode && selectedPoints.some(sp => sp.id === points[i].id) ? "#facc15" : "#4ade80"} 
-              emissive={isProfileMode && selectedPoints.some(sp => sp.id === points[i].id) ? "#facc15" : "#000000"}
+              color={isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? "#facc15" : "#4ade80"} 
+              emissive={isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? "#facc15" : "#000000"}
             />
           </mesh>
           <mesh position={[p.x, p.y, p.z_p]}>
@@ -655,6 +665,7 @@ function App() {
                     <h3 style={{ marginBottom: '1rem' }}>Hızlı 3D Arazi Modeli</h3>
                     <div style={{ height: '400px', background: '#0a0a0a', borderRadius: '12px' }}>
                       <Canvas camera={{ position: [20, 20, 20], fov: 45 }}>
+                        <MapControls />
                         <Terrain3D points={points} />
                       </Canvas>
                     </div>
@@ -692,6 +703,7 @@ function App() {
                   </div>
 
                   <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
+                    <MapControls />
                     <Terrain3D 
                       points={points} 
                       isProfileMode={isProfileMode}
@@ -699,7 +711,7 @@ function App() {
                       onSelectPoint={(pt) => {
                         if (selectedProfilePoints.length < 2) {
                           setSelectedProfilePoints(prev => {
-                            if (prev.some(p => p.id === pt.id)) return prev;
+                            if (prev.some(p => p.x === pt.x && p.y === pt.y)) return prev;
                             return [...prev, pt];
                           });
                         }
