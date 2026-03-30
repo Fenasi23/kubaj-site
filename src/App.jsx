@@ -10,7 +10,7 @@ import { Canvas, useFrame } from 'react-three-fiber';
 import * as THREE from 'three';
 
 // 3D Arazi Bileşeni
-function Terrain3D({ points }) {
+function Terrain3D({ points, onSelectPoint, selectedPoints = [], isProfileMode = false }) {
   const groupRef = useRef();
 
   const { normalizedPoints } = useMemo(() => {
@@ -51,9 +51,20 @@ function Terrain3D({ points }) {
     <group ref={groupRef} rotation={[-Math.PI / 4, 0, 0]}>
       {normalizedPoints.map((p, i) => (
         <group key={`pt-${i}`}>
-          <mesh position={[p.x, p.y, p.z_m]}>
-            <sphereGeometry args={[0.3, 16, 16]} />
-            <meshStandardMaterial color="#4ade80" />
+          <mesh 
+            position={[p.x, p.y, p.z_m]}
+            onClick={(e) => {
+              if (isProfileMode && onSelectPoint) {
+                e.stopPropagation();
+                onSelectPoint(points[i]);
+              }
+            }}
+          >
+            <sphereGeometry args={[isProfileMode && selectedPoints.some(sp => sp.id === points[i].id) ? 0.6 : 0.3, 16, 16]} />
+            <meshStandardMaterial 
+              color={isProfileMode && selectedPoints.some(sp => sp.id === points[i].id) ? "#facc15" : "#4ade80"} 
+              emissive={isProfileMode && selectedPoints.some(sp => sp.id === points[i].id) ? "#facc15" : "#000000"}
+            />
           </mesh>
           <mesh position={[p.x, p.y, p.z_p]}>
             <sphereGeometry args={[0.3, 16, 16]} />
@@ -81,6 +92,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('data');
   const [hakedisData, setHakedisData] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Profil (Kesit) State
+  const [isProfileMode, setIsProfileMode] = useState(false);
+  const [selectedProfilePoints, setSelectedProfilePoints] = useState([]);
+  
+  const lastFetchedRef = useRef({ firmId: null, jobName: null });
   
   // FIRMA YÖNETİMİ DURUMLARI
   const [firms, setFirms] = useState([]);
@@ -426,6 +443,33 @@ function App() {
     return { totalVolume, totalAmount };
   }, [results, hakedisDetails.birimFiyat]);
 
+  const profileData = useMemo(() => {
+    if (selectedProfilePoints.length !== 2) return null;
+    const [pA, pB] = selectedProfilePoints;
+    
+    const distAB = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+    if (distAB === 0) return null;
+
+    const dx = (pB.x - pA.x) / distAB;
+    const dy = (pB.y - pA.y) / distAB;
+
+    const tolerance = 15;
+    const profilePoints = points.map(p => {
+      const apx = p.x - pA.x;
+      const apy = p.y - pA.y;
+      const projection = apx * dx + apy * dy;
+      const perpDist = Math.abs(apx * -dy + apy * dx);
+      return { p, projection, perpDist };
+    }).filter(item => item.perpDist <= tolerance && item.projection >= -tolerance && item.projection <= distAB + tolerance)
+      .sort((a, b) => a.projection - b.projection);
+
+    return { 
+      points: profilePoints.map(item => ({...item.p, dist: item.projection})), 
+      distAB 
+    };
+  }, [selectedProfilePoints, points]);
+
+
   const handleDownloadHakedisPdf = async () => {
     if (!selectedProject) {
       alert("Lütfen bir iş seçin.");
@@ -619,10 +663,119 @@ function App() {
               )}
 
               {activeTab === 'map' && (
-                <section className="glass-card" style={{ height: '600px', padding: 0, background: '#000', overflow: 'hidden' }}>
+                <section className="glass-card" style={{ height: '600px', padding: 0, background: '#000', overflow: 'hidden', position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}>
+                    <button 
+                      className={`btn ${isProfileMode ? 'active' : 'btn-secondary'}`} 
+                      onClick={() => {
+                        setIsProfileMode(!isProfileMode);
+                        setSelectedProfilePoints([]);
+                      }}
+                      style={{ background: isProfileMode ? '#facc15' : '', color: isProfileMode ? '#000' : '' }}
+                    >
+                      <MapIcon size={18} /> {isProfileMode ? 'Kesit Modundan Çık' : 'Kesit (Profil) Oluştur'}
+                    </button>
+                    {isProfileMode && (
+                      <div style={{ background: 'rgba(0,0,0,0.7)', padding: '10px 15px', borderRadius: '8px', marginTop: '10px', color: '#fff', fontSize: '0.9rem', border: '1px solid var(--glass-border)' }}>
+                        {selectedProfilePoints.length === 0 && 'Araziden başlangıç noktasını (A) seçin.'}
+                        {selectedProfilePoints.length === 1 && 'Bitiş noktasını (B) seçin.'}
+                        {selectedProfilePoints.length === 2 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>Kesit oluşturuldu!</span>
+                            <button className="btn-icon-small" onClick={() => setSelectedProfilePoints([])} style={{ background: '#ef4444', color: 'white', marginLeft: '10px', padding: '4px 8px' }}>
+                              Temizle
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
-                    <Terrain3D points={points} />
+                    <Terrain3D 
+                      points={points} 
+                      isProfileMode={isProfileMode}
+                      selectedPoints={selectedProfilePoints}
+                      onSelectPoint={(pt) => {
+                        if (selectedProfilePoints.length < 2) {
+                          setSelectedProfilePoints(prev => {
+                            if (prev.some(p => p.id === pt.id)) return prev;
+                            return [...prev, pt];
+                          });
+                        }
+                      }}
+                    />
                   </Canvas>
+
+                  {isProfileMode && selectedProfilePoints.length === 2 && profileData && profileData.points.length > 1 && (
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '35%', background: 'var(--sidebar-bg)', borderTop: '1px solid var(--glass-border)', padding: '15px' }} className="anim-fade-in">
+                      <h4 style={{ color: '#fff', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Arazi Kesit Profili</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Mesafe: {profileData.distAB.toFixed(2)}m</span>
+                      </h4>
+                      {(() => {
+                        const pts = profileData.points;
+                        const width = 1000;
+                        const height = 150;
+                        const distAB = profileData.distAB;
+                        const zVals = pts.flatMap(p => [p.z_mevcut, p.z_proje]);
+                        const minZ = Math.min(...zVals) - 2;
+                        const maxZ = Math.max(...zVals) + 2;
+                        const rangeZ = (maxZ - minZ) || 10;
+
+                        const getPath = (field) => pts.map((pt, i) => {
+                          const x = (pt.dist / distAB) * width;
+                          const y = height - ((pt[field] - minZ) / rangeZ) * height;
+                          return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
+                        }).join(' ');
+
+                        const areaPathMevcut = pts.map((pt, i) => {
+                           const x = (pt.dist / distAB) * width;
+                           const y = height - ((pt.z_mevcut - minZ) / rangeZ) * height;
+                           return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
+                        }).join(' ');
+                        const areaPathProje = [...pts].reverse().map(pt => {
+                           const x = (pt.dist / distAB) * width;
+                           const y = height - ((pt.z_proje - minZ) / rangeZ) * height;
+                           return `L ${x},${y}`;
+                        }).join(' ');
+                        const areaPath = areaPathMevcut + ' ' + areaPathProje + ' Z';
+                        
+                        return (
+                         <div style={{ width: '100%', height: 'calc(100% - 30px)', position: 'relative' }}>
+                          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
+                            <defs>
+                              <linearGradient id="fillGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="var(--accent-color)" stopOpacity="0.4" />
+                                <stop offset="100%" stopColor="var(--error-color)" stopOpacity="0.4" />
+                              </linearGradient>
+                            </defs>
+                            <path d={areaPath} fill="url(#fillGrad)" />
+                            
+                            <path d={getPath('z_mevcut')} fill="none" stroke="#4ade80" strokeWidth="3" />
+                            <path d={getPath('z_proje')} fill="none" stroke="#3b82f6" strokeWidth="3" strokeDasharray="5,5" />
+                            
+                            {pts.map((pt, i) => {
+                               const x = (pt.dist / distAB) * width;
+                               const ym = height - ((pt.z_mevcut - minZ) / rangeZ) * height;
+                               const yp = height - ((pt.z_proje - minZ) / rangeZ) * height;
+                               return (
+                                 <g key={`pt-${i}`}>
+                                   <circle cx={x} cy={ym} r="3" fill="#4ade80" />
+                                   <circle cx={x} cy={yp} r="3" fill="#3b82f6" />
+                                 </g>
+                               );
+                            })}
+                          </svg>
+                          <div style={{ position: 'absolute', right: 10, top: 10, display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.5)', padding: '5px', borderRadius: '4px' }}>
+                            <span style={{ color: '#4ade80', fontWeight: 'bold' }}>— Mevcut</span>
+                            <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>- - Proje</span>
+                          </div>
+                         </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </section>
               )}
             </main>
