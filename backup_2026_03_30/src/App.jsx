@@ -1153,10 +1153,7 @@ function App() {
               {navigationItems.map(item => (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    setActiveModule(item.id);
-                    setMobileMenuOpen(false);
-                  }}
+                  onClick={() => setActiveModule(item.id)}
                   className={`nav-item ${activeModule === item.id ? 'active' : ''}`}
                   style={{
                     display: 'flex',
@@ -1208,10 +1205,7 @@ function App() {
                 <div key={firm.id} className="firm-group">
                   <div 
                     className={`nav-item nav-item-firm ${selectedFirm?.id === firm.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedFirm(firm);
-                      setMobileMenuOpen(false);
-                    }}
+                    onClick={() => setSelectedFirm(firm)}
                     style={{ 
                       padding: '0.75rem', 
                       borderRadius: '10px', 
@@ -1246,16 +1240,13 @@ function App() {
                   {selectedFirm?.id === firm.id && (
                     <div style={{ paddingLeft: '2rem', marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '4px' }} className="anim-fade-in">
                       {projects.length > 0 ? projects.map(proj => (
-                          <div 
-                            key={proj}
-                            className={`nav-item ${selectedProject === proj ? 'active' : ''}`}
-                            onClick={() => {
-                              setSelectedProject(proj);
-                              setMobileMenuOpen(false);
-                            }}
-                            style={{ 
-                              padding: '0.5rem 0.75rem', 
-                              borderRadius: '8px', 
+                        <div 
+                          key={proj}
+                          className={`nav-item ${selectedProject === proj ? 'active' : ''}`}
+                          onClick={() => setSelectedProject(proj)}
+                          style={{ 
+                            padding: '0.5rem 0.75rem', 
+                            borderRadius: '8px', 
                             borderLeft: 'none', 
                             fontSize: '0.85rem', 
                             display: 'flex', 
