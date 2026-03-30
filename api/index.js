@@ -424,6 +424,13 @@ app.post('/api/export/pdf', async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         doc.pipe(res);
 
+        if (settings.companyLogo) {
+            try {
+                const base64Data = settings.companyLogo.replace(/^data:image\/\w+;base64,/, "");
+                doc.image(Buffer.from(base64Data, 'base64'), 50, 40, { height: 40 });
+            } catch(e) { console.error("Logo basılamadı:", e); }
+        }
+
         // HEADER
         if (fs.existsSync(fontBold)) doc.font(fontBold);
         doc.fontSize(16).text(settings.companyName.toUpperCase(), { align: 'center' });
@@ -511,6 +518,13 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         doc.pipe(res);
 
+        if (settings.companyLogo) {
+            try {
+                const base64Data = settings.companyLogo.replace(/^data:image\/\w+;base64,/, "");
+                doc.image(Buffer.from(base64Data, 'base64'), 50, 40, { height: 40 });
+            } catch(e) { console.error("Logo basılamadı:", e); }
+        }
+
         // HEADER
         if (fs.existsSync(fontBold)) doc.font(fontBold);
         doc.fontSize(16).text(settings.companyName.toUpperCase(), { align: 'center' });
@@ -585,6 +599,13 @@ app.post('/api/export/summary-pdf', async (req, res) => {
         const doc = new PDFDocument({ margin: 40, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         doc.pipe(res);
+
+        if (settings.companyLogo) {
+            try {
+                const base64Data = settings.companyLogo.replace(/^data:image\/\w+;base64,/, "");
+                doc.image(Buffer.from(base64Data, 'base64'), 40, 30, { height: 40 });
+            } catch(e) { console.error("Logo basılamadı:", e); }
+        }
 
         if (fs.existsSync(fontBold)) doc.font(fontBold);
         doc.fontSize(16).text(settings.companyName.toUpperCase(), { align: 'center' });

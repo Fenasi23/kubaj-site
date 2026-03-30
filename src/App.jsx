@@ -628,6 +628,21 @@ function App() {
     }
   };
 
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 500 * 1024) {
+        alert("Dosya boyutu çok büyük! Lütfen 500KB altında bir logo seçin.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSettings(prev => ({...prev, companyLogo: reader.result}));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const renderContent = () => {
     switch (activeModule) {
       case 'kubaj':
@@ -1336,6 +1351,34 @@ function App() {
                       value={settings.companyAddress} 
                       onChange={e => setSettings({...settings, companyAddress: e.target.value})} 
                     />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Firma Logosu (Opsiyonel)</label>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      {settings.companyLogo ? (
+                        <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', background: '#fff' }}>
+                          <img src={settings.companyLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                          <button 
+                            onClick={() => setSettings({...settings, companyLogo: ''})} 
+                            style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(239, 68, 68, 0.9)', border: 'none', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Logoyu Kaldır"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ width: '80px', height: '80px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', border: '1px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                          Yok
+                        </div>
+                      )}
+                      <div>
+                        <input type="file" id="logoUpload" accept="image/png, image/jpeg" style={{ display: 'none' }} onChange={handleLogoUpload} />
+                        <label htmlFor="logoUpload" className="btn btn-secondary" style={{ cursor: 'pointer', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
+                          <Upload size={14} style={{ marginRight: '6px' }} /> Logo Seç
+                        </label>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--text-muted)' }}>PNG/JPG, Maks: 500KB</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>
