@@ -9,6 +9,27 @@ import {
 import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { MapContainer, TileLayer, LayersControl, Marker, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+});
+
+function FlyToLocation({ lat, lng }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (lat && lng) map.flyTo([lat, lng], 18);
+  }, [lat, lng, map]);
+  return null;
+}
 
 extend({ OrbitControls });
 
@@ -127,8 +148,14 @@ function App() {
   const [archiveProjects, setArchiveProjects] = useState([]);
   const [archiveSearch, setArchiveSearch] = useState('');
 
+  // Parsel ve Harita State
+  const [mapLat, setMapLat] = useState('');
+  const [mapLng, setMapLng] = useState('');
+  const [targetLocation, setTargetLocation] = useState(null);
+
   const navigationItems = [
     { id: 'kubaj', label: 'Kubaj Analizi', icon: <BarChart3 size={18} /> },
+    { id: 'parsel', label: 'Parsel ve Harita', icon: <MapIcon size={18} /> },
     { id: 'hakedis', label: 'Hakediş Yönetimi', icon: <FileCheck size={18} /> },
     { id: 'archive', label: 'İş Takip Paneli', icon: <LayoutDashboard size={18} /> },
     { id: 'converter', label: 'Format Dönüştürücü', icon: <RefreshCw size={18} /> },
@@ -1342,6 +1369,101 @@ function App() {
                   </table>
                 </div>
               </section>
+            </main>
+          </div>
+        );
+      case 'parsel':
+        return (
+          <div className="module-container anim-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: 0 }}>
+            <header className="module-header" style={{ padding: '1rem 2rem', borderBottom: '1px solid var(--glass-border)', background: 'var(--sidebar-bg)' }}>
+              <div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Parsel ve Harita</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Gerçek dünya üzerinde konum inceleme ve sorgulama</p>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <a 
+                  href="https://parselsorgu.tkgm.gov.tr/" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="btn" 
+                  style={{ background: '#3b82f6', textDecoration: 'none' }}
+                >
+                  <MapIcon size={18} /> TKGM Parsel Sorgu
+                </a>
+              </div>
+            </header>
+            
+            <main style={{ flex: 1, position: 'relative' }}>
+              <div style={{ position: 'absolute', top: 20, left: 60, zIndex: 1000, background: 'rgba(15, 23, 42, 0.85)', padding: '15px', borderRadius: '8px', border: '1px solid var(--glass-border)', backdropFilter: 'blur(10px)' }}>
+                <h4 style={{ color: '#fff', marginBottom: '10px', fontSize: '1rem' }}>Koordinata Git</h4>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Enlem (Lat)</label>
+                    <input 
+                      type="text" 
+                      className="table-input" 
+                      style={{ width: '120px' }} 
+                      placeholder="Örn: 39.92"
+                      value={mapLat}
+                      onChange={e => setMapLat(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Boylam (Lng)</label>
+                    <input 
+                      type="text" 
+                      className="table-input" 
+                      style={{ width: '120px' }} 
+                      placeholder="Örn: 32.85"
+                      value={mapLng}
+                      onChange={e => setMapLng(e.target.value)}
+                    />
+                  </div>
+                  <button 
+                    className="btn" 
+                    style={{ background: 'var(--primary-color)', padding: '0.5rem 1rem' }}
+                    onClick={() => setTargetLocation({ lat: parseFloat(mapLat), lng: parseFloat(mapLng) })}
+                  >
+                    Git
+                  </button>
+                </div>
+              </div>
+
+              <MapContainer 
+                center={[39.92077, 32.85411]} 
+                zoom={6} 
+                style={{ height: '100%', width: '100%', background: '#0f172a' }}
+              >
+                <LayersControl position="topright">
+                  <LayersControl.BaseLayer name="OpenStreetMap">
+                    <TileLayer
+                      attribution='&copy; OpenStreetMap'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                  </LayersControl.BaseLayer>
+                  <LayersControl.BaseLayer checked name="Google Uydu">
+                    <TileLayer
+                      attribution='Map data &copy; Google'
+                      url="http://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}"
+                      maxZoom={20}
+                    />
+                  </LayersControl.BaseLayer>
+                  <LayersControl.BaseLayer name="Google Hibrit">
+                    <TileLayer
+                      attribution='Map data &copy; Google'
+                      url="http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}"
+                      maxZoom={20}
+                    />
+                  </LayersControl.BaseLayer>
+                </LayersControl>
+                
+                {targetLocation && (
+                  <>
+                    <Marker position={[targetLocation.lat, targetLocation.lng]} />
+                    <FlyToLocation lat={targetLocation.lat} lng={targetLocation.lng} />
+                  </>
+                )}
+              </MapContainer>
             </main>
           </div>
         );
