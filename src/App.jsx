@@ -506,6 +506,49 @@ function App() {
     };
   }, [selectedProfilePoints, points]);
 
+  const recalculateKubaj = (pts) => {
+    let cut = 0, fill = 0;
+    pts.forEach(p => {
+        const diff = (parseFloat(p.z_proje) || 0) - (parseFloat(p.z_mevcut) || 0);
+        if (diff > 0) fill += diff * 25; else cut += Math.abs(diff) * 25;
+    });
+    setResults({ cutVolume: cut, fillVolume: fill, totalVolume: fill - cut });
+  };
+
+  const handlePointChange = (index, field, value) => {
+    const newPoints = [...points];
+    const val = field === 'id' ? value : parseFloat(value);
+    newPoints[index] = { ...newPoints[index], [field]: field === 'id' ? value : (isNaN(val) ? 0 : val) };
+    setPoints(newPoints);
+    recalculateKubaj(newPoints);
+  };
+
+  const handleAddPoint = () => {
+    const newPoints = [...points, { id: `N${points.length + 1}`, x: 0, y: 0, z_mevcut: 0, z_proje: 0 }];
+    setPoints(newPoints);
+    recalculateKubaj(newPoints);
+  };
+
+  const handleDeletePoint = (index) => {
+    const newPoints = points.filter((_, i) => i !== index);
+    setPoints(newPoints);
+    recalculateKubaj(newPoints);
+  };
+  
+  const savePointsToDb = async () => {
+    if (!selectedFirm || !selectedProject) return alert("Firma veya iş seçili değil.");
+    try {
+      setLoading(true);
+      const kubajData = { points, results };
+      await axios.post(`${API_URL}/api/kubaj`, kubajData, getHeaders());
+      alert("Düzenlemeler veritabanına başarıyla kaydedildi!");
+    } catch(e) {
+      alert("Kaydetme hatası: " + (e.response?.data || e.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const handleDownloadHakedisPdf = async () => {
     if (!selectedProject) {
@@ -638,26 +681,62 @@ function App() {
 
               {activeTab === 'table' && (
                 <section className="glass-card">
-                  <h3 style={{ marginBottom: '1.5rem' }}>Saha Ölçüm Noktaları</h3>
-                  <div style={{ overflowX: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h3 style={{ margin: 0 }}>Canlı Nokta Editörü</h3>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={handleAddPoint} className="btn" style={{ background: '#10b981', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
+                        <Plus size={16} /> Nokta Ekle
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
                     <table>
-                      <thead>
+                      <thead style={{ position: 'sticky', top: 0, background: 'var(--sidebar-bg)', zIndex: 1 }}>
                         <tr>
-                          <th>ID</th><th>X</th><th>Y</th><th>Mevcut</th><th>Proje</th><th>Durum</th>
+                          <th>Nokta ID</th>
+                          <th>Y (Sağa)</th>
+                          <th>X (Yukarı)</th>
+                          <th>Z Mevcut</th>
+                          <th>Z Proje</th>
+                          <th>Durum</th>
+                          <th>İşlem</th>
                         </tr>
                       </thead>
                       <tbody>
                         {points.length > 0 ? points.map((p, i) => (
-                          <tr key={i}>
-                            <td>{p.id}</td><td>{typeof p.x === 'number' ? p.x.toFixed(2) : p.x}</td><td>{typeof p.y === 'number' ? p.y.toFixed(2) : p.y}</td>
-                            <td>{p.z_mevcut.toFixed(2)}</td><td>{p.z_proje.toFixed(2)}</td>
-                            <td style={{ color: p.z_proje >= p.z_mevcut ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                          <tr key={`point-edit-${i}`}>
+                            <td style={{ width: '100px' }}>
+                              <input type="text" className="table-input" value={p.id} onChange={(e) => handlePointChange(i, 'id', e.target.value)} />
+                            </td>
+                            <td style={{ width: '120px' }}>
+                              <input type="number" step="0.01" className="table-input" value={p.y} onChange={(e) => handlePointChange(i, 'y', e.target.value)} />
+                            </td>
+                            <td style={{ width: '120px' }}>
+                              <input type="number" step="0.01" className="table-input" value={p.x} onChange={(e) => handlePointChange(i, 'x', e.target.value)} />
+                            </td>
+                            <td style={{ width: '120px' }}>
+                              <input type="number" step="0.01" className="table-input" value={p.z_mevcut} onChange={(e) => handlePointChange(i, 'z_mevcut', e.target.value)} />
+                            </td>
+                            <td style={{ width: '120px' }}>
+                              <input type="number" step="0.01" className="table-input" value={p.z_proje} onChange={(e) => handlePointChange(i, 'z_proje', e.target.value)} />
+                            </td>
+                            <td style={{ color: p.z_proje >= p.z_mevcut ? '#4ade80' : '#f87171', fontWeight: 600, width: '100px' }}>
                               {p.z_proje >= p.z_mevcut ? 'DOLGU' : 'KAZI'}
                             </td>
+                            <td style={{ width: '60px', textAlign: 'center' }}>
+                              <button onClick={() => handleDeletePoint(i)} className="btn-icon-small" style={{ color: 'var(--error-color)' }} title="Sil">
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
                           </tr>
-                        )) : <tr><td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Henüz veri yüklenmedi.</td></tr>}
+                        )) : <tr><td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Henüz veri yüklenmedi. Tabloya veri girmek için "Nokta Ekle" butonunu kullanabilirsiniz.</td></tr>}
                       </tbody>
                     </table>
+                  </div>
+                  <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button onClick={savePointsToDb} className="btn" style={{ background: 'var(--primary-color)' }}>
+                      <Upload size={16} /> Değişiklikleri Veritabanına Kaydet
+                    </button>
                   </div>
                 </section>
               )}

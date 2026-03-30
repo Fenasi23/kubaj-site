@@ -293,6 +293,31 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     } catch (err) { res.status(500).send('Hesaplama hatası: ' + err.message); }
 });
 
+app.post('/api/kubaj', async (req, res) => {
+    try {
+        const firmId = req.headers['x-firm-id'];
+        const jobName = req.headers['x-job-name'] ? decodeURIComponent(req.headers['x-job-name']) : null;
+        const kubajData = req.body; 
+        
+        if (!firmId || !jobName || firmId === 'default' || !kubajData) {
+            return res.status(400).send('Eksik bilgi veya geçersiz firma.');
+        }
+
+        await Project.findOneAndUpdate(
+            { firmId, jobName },
+            { 
+               kubajData,
+               updatedAt: Date.now() 
+            },
+            { upsert: true }
+        );
+        res.json({ message: 'Noktalar veri tabanına başarıyla işlendi.' });
+    } catch (err) {
+        console.error("Kubaj kaydetme hatası:", err);
+        res.status(500).send('Kaydetme hatası: ' + err.message);
+    }
+});
+
 app.get('/api/projects/all', async (req, res) => {
     try {
         const projects = await Project.find().sort({ updatedAt: -1 });
