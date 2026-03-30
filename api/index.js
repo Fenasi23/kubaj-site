@@ -71,7 +71,8 @@ const SettingsSchema = new mongoose.Schema({
     userTitle: String,
     companyAddress: String,
     defaultPreparer: String,
-    defaultController: String
+    defaultController: String,
+    companyLogo: String
 });
 const Settings = mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);
 
