@@ -65,24 +65,24 @@ function Terrain3D({ points, onSelectPoint, selectedPoints = [], isProfileMode =
           onClick={(e) => {
             if (isProfileMode && onSelectPoint) {
               e.stopPropagation();
-              onSelectPoint(points[i]);
+              onSelectPoint({ ...points[i], _index: i });
             }
           }}
         >
           <mesh position={[p.x, p.y, p.z_m]}>
-            <sphereGeometry args={[isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? 0.6 : 0.3, 16, 16]} />
+            <sphereGeometry args={[isProfileMode && selectedPoints.some(sp => sp._index === i) ? 0.6 : 0.3, 16, 16]} />
             <meshStandardMaterial 
-              color={isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? "#facc15" : "#4ade80"} 
-              emissive={isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? "#facc15" : "#000000"}
+              color={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : "#4ade80"} 
+              emissive={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : "#000000"}
             />
           </mesh>
           <mesh position={[p.x, p.y, p.z_p]}>
             <sphereGeometry args={[0.3, 16, 16]} />
-            <meshStandardMaterial color={isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? "#facc15" : "#3b82f6"} transparent opacity={0.6} />
+            <meshStandardMaterial color={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : "#3b82f6"} transparent opacity={0.6} />
           </mesh>
           <mesh position={[p.x, p.y, (p.z_m + p.z_p) / 2]}>
             <cylinderGeometry args={[0.05, 0.05, Math.abs(p.z_p - p.z_m) || 0.1]} />
-            <meshStandardMaterial color={isProfileMode && selectedPoints.some(sp => sp.x === points[i].x && sp.y === points[i].y) ? "#facc15" : (p.z_p >= p.z_m ? "#4ade80" : "#f87171")} />
+            <meshStandardMaterial color={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : (p.z_p >= p.z_m ? "#4ade80" : "#f87171")} />
           </mesh>
         </group>
       ))}
@@ -711,7 +711,7 @@ function App() {
                       onSelectPoint={(pt) => {
                         if (selectedProfilePoints.length < 2) {
                           setSelectedProfilePoints(prev => {
-                            if (prev.some(p => p.x === pt.x && p.y === pt.y)) return prev;
+                            if (prev.some(p => p._index === pt._index)) return prev;
                             return [...prev, pt];
                           });
                         }
