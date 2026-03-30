@@ -428,8 +428,8 @@ app.post('/api/export/pdf', async (req, res) => {
         if (settings.companyLogo) {
             try {
                 const base64Data = settings.companyLogo.replace(/^data:image\/\w+;base64,/, "");
-                doc.image(Buffer.from(base64Data, 'base64'), { fit: [450, 150], align: 'center' });
-                doc.moveDown(1.5);
+                doc.image(Buffer.from(base64Data, 'base64'), 40, 30, { fit: [250, 90] });
+
             } catch(e) { console.error("Logo basılamadı:", e); }
         }
 
@@ -523,8 +523,8 @@ app.post('/api/export/hakedis-pdf', async (req, res) => {
         if (settings.companyLogo) {
             try {
                 const base64Data = settings.companyLogo.replace(/^data:image\/\w+;base64,/, "");
-                doc.image(Buffer.from(base64Data, 'base64'), { fit: [450, 150], align: 'center' });
-                doc.moveDown(1.5);
+                doc.image(Buffer.from(base64Data, 'base64'), 40, 30, { fit: [250, 90] });
+
             } catch(e) { console.error("Logo basılamadı:", e); }
         }
 
@@ -606,8 +606,8 @@ app.post('/api/export/summary-pdf', async (req, res) => {
         if (settings.companyLogo) {
             try {
                 const base64Data = settings.companyLogo.replace(/^data:image\/\w+;base64,/, "");
-                doc.image(Buffer.from(base64Data, 'base64'), { fit: [450, 150], align: 'center' });
-                doc.moveDown(1.5);
+                doc.image(Buffer.from(base64Data, 'base64'), 40, 30, { fit: [250, 90] });
+
             } catch(e) { console.error("Logo basılamadı:", e); }
         }
 
