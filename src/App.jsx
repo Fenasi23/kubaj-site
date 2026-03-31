@@ -1858,141 +1858,40 @@ function App() {
           )}
         </div>
 
-        {!isSidebarCollapsed && (
-          <div style={{ padding: '0 1rem 1.5rem', borderBottom: '1px solid var(--glass-border)', marginBottom: '1.5rem' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '1rem' }}>ANA MENÜ</span>
-            <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {navigationItems.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveModule(item.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`nav-item ${activeModule === item.id ? 'active' : ''}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '10px',
-                    width: '100%',
-                    textAlign: 'left',
-                    background: activeModule === item.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                    borderLeft: activeModule === item.id ? '3px solid var(--primary-color)' : '3px solid transparent',
-                    color: activeModule === item.id ? 'var(--primary-color)' : 'var(--text-muted)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {item.icon}
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{item.label}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-        )}
-
-        {!isSidebarCollapsed && (
-          <div style={{ padding: '0 1rem 1rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>FİRMALAR VE İŞLER</span>
-              <button onClick={() => setShowAddFirm(!showAddFirm)} className="btn-icon-small">
-                <Plus size={16} />
+        {/* Sidebar Nav (Main Tools Only) */}
+        <div style={{ padding: '0 1rem 1rem', flex: 1, overflowY: 'auto' }}>
+          {!isSidebarCollapsed && (
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '1rem', paddingLeft: '1rem' }}>ARAÇLAR</span>
+          )}
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {navigationItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveModule(item.id);
+                  setMobileMenuOpen(false);
+                }}
+                className={`nav-item ${activeModule === item.id ? 'active' : ''}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '10px',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: activeModule === item.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                  borderLeft: activeModule === item.id ? '3px solid var(--primary-color)' : '3px solid transparent',
+                  color: activeModule === item.id ? 'var(--primary-color)' : 'var(--text-muted)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {item.icon}
+                {!isSidebarCollapsed && <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{item.label}</span>}
               </button>
-            </div>
-
-            {showAddFirm && (
-              <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', border: '1px solid var(--glass-border)' }} className="anim-fade-in">
-                <input 
-                  type="text" 
-                  placeholder="Yeni Firma Adı..." 
-                  className="table-input" 
-                  value={newFirmName} 
-                  onChange={e => setNewFirmName(e.target.value)}
-                  style={{ marginBottom: '0.5rem' }}
-                />
-                <button onClick={handleAddFirm} className="btn" style={{ width: '100%', padding: '0.4rem', justifyContent: 'center' }}>Firma Ekle</button>
-              </div>
-            )}
-
-            <div className="firm-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {firms.map(firm => (
-                <div key={firm.id} className="firm-group">
-                  <div 
-                    className={`nav-item nav-item-firm ${selectedFirm?.id === firm.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedFirm(firm);
-                      setMobileMenuOpen(false);
-                    }}
-                    style={{ 
-                      padding: '0.75rem', 
-                      borderRadius: '10px', 
-                      borderLeft: 'none', 
-                      display: 'flex', 
-                      justifyContent: 'space-between',
-                      background: selectedFirm?.id === firm.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
-                      <Building2 size={18} />
-                      <span style={{ fontSize: '0.9rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{firm.name}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button onClick={(e) => { e.stopPropagation(); handleBackupFirm(firm.id, firm.name); }} className="btn-icon-small" title="Yedek Al">
-                        <Download size={14} />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); handleAddProject(firm.id); }} className="btn-icon-small" title="İş Ekle">
-                        <PlusSquare size={14} />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); const newName = prompt('Yeni firma adı:', firm.name); if(newName) handleUpdateFirm(firm.id, newName); }} className="btn-icon-small" title="Düzenle">
-                        <Pencil size={14} />
-                      </button>
-                      {firm.id !== 'default' && (
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteFirm(firm.id); }} className="btn-icon-small" style={{ color: 'var(--error-color)' }} title="Sil">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {selectedFirm?.id === firm.id && (
-                    <div style={{ paddingLeft: '2rem', marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '4px' }} className="anim-fade-in">
-                      {projects.length > 0 ? projects.map(proj => (
-                          <div 
-                            key={proj}
-                            className={`nav-item ${selectedProject === proj ? 'active' : ''}`}
-                            onClick={() => {
-                              setSelectedProject(proj);
-                              setMobileMenuOpen(false);
-                            }}
-                            style={{ 
-                              padding: '0.5rem 0.75rem', 
-                              borderRadius: '8px', 
-                            borderLeft: 'none', 
-                            fontSize: '0.85rem', 
-                            display: 'flex', 
-                            justifyContent: 'space-between',
-                            background: selectedProject === proj ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                            <FileCheck size={14} />
-                            <span style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{proj}</span>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteProject(firm.id, proj); }} className="btn-icon-small" style={{ opacity: 0.6 }} title="İşi Sil">
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      )) : (
-                        <div style={{ padding: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>Henüz iş eklenmedi.</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+            ))}
+          </nav>
+        </div>
 
         <div className="sidebar-footer" style={{ padding: '0.75rem', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'center' }}>
           <button 
@@ -2021,21 +1920,118 @@ function App() {
 
       {/* Main Content Area */}
       <div className="main-content">
-        <header className="main-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div className="header-title-group">
-            <h1 className="header-title" style={{ fontSize: 'clamp(1.1rem, 4vw, 1.5rem)', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
-              Muhammed BİLİCİ - Harita Çözümleri
+        <header className="main-header" style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginBottom: '2rem', 
+          flexWrap: 'wrap', 
+          gap: '1.5rem',
+          background: 'rgba(30, 41, 59, 0.4)',
+          padding: '1.25rem 1.5rem',
+          borderRadius: '16px',
+          border: '1px solid var(--glass-border)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <div className="header-title-group" style={{ minWidth: '200px' }}>
+            <h1 className="header-title" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
+              Harita Çözümleri
             </h1>
-            <p className="header-subtitle" style={{ fontSize: 'clamp(0.7rem, 2vw, 0.875rem)', color: 'var(--text-muted)' }}>
-              Mühendislik ve CBS Portalı
+            <p className="header-subtitle" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Muhammed BİLİCİ
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{ width: '40px', height: '40px', background: 'var(--sidebar-bg)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--glass-border)' }}>
-              <Info size={18} color="var(--primary-color)" />
+
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {/* Firm Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '5px 12px', borderRadius: '10px', border: '1px solid var(--glass-border)' }}>
+              <Building2 size={16} color="var(--primary-color)" />
+              <select 
+                className="top-select"
+                value={selectedFirm?.id || ''} 
+                onChange={(e) => {
+                  const firm = firms.find(f => f.id === e.target.value);
+                  setSelectedFirm(firm);
+                  setSelectedProject('');
+                }}
+                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: 600, outline: 'none', cursor: 'pointer', padding: '5px' }}
+              >
+                <option value="" disabled style={{background: '#1e293b'}}>Firma Seçin...</option>
+                {firms.map(f => <option key={f.id} value={f.id} style={{background: '#1e293b'}}>{f.name}</option>)}
+              </select>
+              <button onClick={() => setShowAddFirm(!showAddFirm)} className="btn-icon-small" title="Firma Ekle">
+                <Plus size={16} />
+              </button>
+            </div>
+
+            {/* Project Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '5px 12px', borderRadius: '10px', border: '1px solid var(--glass-border)' }}>
+              <FileCheck size={16} color="var(--accent-color)" />
+              <select 
+                className="top-select"
+                value={selectedProject} 
+                onChange={(e) => setSelectedProject(e.target.value)}
+                disabled={!selectedFirm}
+                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: 600, outline: 'none', cursor: 'pointer', padding: '5px', opacity: !selectedFirm ? 0.5 : 1 }}
+              >
+                <option value="" disabled style={{background: '#1e293b'}}>İş Seçin...</option>
+                {projects.map(p => <option key={p} value={p} style={{background: '#1e293b'}}>{p}</option>)}
+              </select>
+              <button 
+                onClick={() => selectedFirm && handleAddProject(selectedFirm.id)} 
+                className="btn-icon-small" 
+                title="İş Ekle"
+                disabled={!selectedFirm}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {selectedProject && (
+                <button 
+                  onClick={() => handleDeleteProject(selectedFirm.id, selectedProject)} 
+                  className="btn-icon-small" 
+                  style={{ color: 'var(--error-color)', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '8px' }}
+                  title="Seçili İşi Sil"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+              {selectedFirm && (
+                <button 
+                  onClick={() => handleBackupFirm(selectedFirm.id, selectedFirm.name)} 
+                  className="btn-icon-small" 
+                  style={{ color: 'var(--primary-color)', background: 'rgba(59, 130, 246, 0.1)', padding: '8px', borderRadius: '8px' }}
+                  title="Firma Yedeği Al"
+                >
+                  <Download size={16} />
+                </button>
+              )}
             </div>
           </div>
         </header>
+
+        {showAddFirm && (
+          <div className="anim-scale-in" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+            <div className="glass-card" style={{ width: '400px', margin: 'auto' }}>
+              <h3 style={{ marginBottom: '1.5rem' }}>Yeni Firma Ekle</h3>
+              <input 
+                type="text" 
+                placeholder="Firma Adı..." 
+                className="table-input" 
+                value={newFirmName} 
+                onChange={e => setNewFirmName(e.target.value)}
+                style={{ marginBottom: '1.5rem' }}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button onClick={() => setShowAddFirm(false)} className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>İptal</button>
+                <button onClick={handleAddFirm} className="btn" style={{ flex: 1, justifyContent: 'center' }}>Ekle</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {renderContent()}
       </div>
