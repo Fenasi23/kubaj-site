@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, AlertTriangle, Lightbulb, CheckCircle2, Sparkles, Smartphone } from 'lucide-react';
+import { Info, AlertTriangle, Lightbulb, CheckCircle2, Sparkles, Smartphone, Camera, Image as ImageIcon } from 'lucide-react';
 
 const TipBox = ({ children, title = "İpucu" }) => (
   <div style={{ 
@@ -79,35 +79,32 @@ const GuideContent = () => (
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
             <li><b>Koordinata Git:</b> Enlem ve Boylam girerek noktayı bulun.</li>
             <li><b>Ölçüm Araçları:</b> Harita üzerinden mesafe ve alan hesabı yapın.</li>
-            <li><b>KML İndir:</b> Ölçümleri Google Earth için dışa aktarın.</li>
             <li><b>Katmanlar:</b> Uydu ve Harita görünümleri arasında geçiş yapın.</li>
           </ul>
         </div>
 
-        <div className="glass-card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>📜 Hakediş Yönetimi</h3>
+        <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1))', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+          <h3 style={{ marginBottom: '1rem', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>📸 Saha Fotoğrafları</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Otomatik Veri:</b> Kubaj sonuçları buraya anlık yansır.</li>
-            <li><b>Birim Fiyat:</b> İş kalemlerine fiyat tanımlayarak toplam tutarı görün.</li>
-            <li><b>İmza Ayarları:</b> PDF raporlarındaki yetkili isimlerini tek tıkla düzenleyin.</li>
+            <li><b>Konum Etiketli:</b> GPS verisi içeren fotoğrafları haritaya yükleyin.</li>
+            <li><b>Otomatik Yerleşim:</b> Fotoğraflar çekildikleri tam noktada belirir.</li>
+            <li><b>Popup Önizleme:</b> İkonlara tıklayarak fotoğrafları büyük görün.</li>
           </ul>
         </div>
 
         <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1))', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
           <h3 style={{ marginBottom: '1rem', color: '#a855f7', display: 'flex', alignItems: 'center', gap: '8px' }}>✨ AI Saha Asistanı</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Anomali Tespiti:</b> Koordinat yüklemelerinde hatalı veri ve kot farklarını bulur.</li>
-            <li><b>İlerleme Analizi:</b> Mevcut işi eski hakedişlerle kıyaslayarak hız raporlar.</li>
-            <li><b>Akıllı Öneriler:</b> Hakediş modülünde maliyet sapmalarını analiz eder.</li>
+            <li><b>Anomali Tespiti:</b> Hatalı veri ve ani kot farklarını bulur.</li>
+            <li><b>İlerleme Analizi:</b> Mevcut işi eski hakedişlerle kıyaslar.</li>
           </ul>
         </div>
         
         <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.1))', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
           <h3 style={{ marginBottom: '1rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '8px' }}>📱 Saha Modu (PWA)</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Cihaza Yükle:</b> Tarayıcı ayarlarından "Ana Ekrana Ekle" diyerek uygulama olarak kullanın.</li>
-            <li><b>Offline Kayıt:</b> İnternet yokken girilen veriler telefonda saklanır.</li>
-            <li><b>Oto-Senkron:</b> İnternet geldiği an tüm veriler otomatik senkronize olur.</li>
+            <li><b>Cihaza Yükle:</b> Uygulamayı ana ekrana ekleyip kullanın.</li>
+            <li><b>Offline Kayıt:</b> İnternet yokken verileri telefon hafızasında tutar.</li>
           </ul>
         </div>
       </div>
@@ -116,28 +113,23 @@ const GuideContent = () => (
     <section style={{ marginBottom: '3rem' }}>
       <h2 style={{ fontSize: '1.5rem', borderBottom: '2px solid var(--glass-border)', paddingBottom: '0.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
         <Smartphone size={24} color="var(--primary-color)" />
-        3. Saha Modu Kurulumu
+        3. Saha Modu ve Fotoğraflar
       </h2>
       <div className="glass-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
-        <p style={{ marginBottom: '1rem', lineHeight: 1.6 }}>Arazide internetin çekmediği durumlar için uygulamayı telefonunuza yükleyebilirsiniz:</p>
+        <p style={{ marginBottom: '1rem', lineHeight: 1.6 }}>Saha çalışmalarını profesyonelleştiren yeni araçlarımız:</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           <div>
-            <h4 style={{ color: 'var(--primary-color)', marginBottom: '0.5rem' }}>Android (Chrome)</h4>
-            <ol style={{ paddingLeft: '1.25rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-              <li>Siteye giriş yapın.</li>
-              <li>Sağ üstteki üç noktaya (⋮) basın.</li>
-              <li>"Uygulamayı YÜKLE" seçeneğini seçin.</li>
-            </ol>
+            <h4 style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>Mobil Yükleme</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Chrome veya Safari ayarlarından "Ana Ekrana Ekle" diyerek uygulamayı sahada daha hızlı kullanın.</p>
           </div>
           <div>
-            <h4 style={{ color: 'var(--primary-color)', marginBottom: '0.5rem' }}>iOS (Safari)</h4>
-            <ol style={{ paddingLeft: '1.25rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-              <li>Siteye giriş yapın.</li>
-              <li>Alt menüdeki "Paylaş" (↑) butonuna basın.</li>
-              <li>"Ana Ekrana EKLE" seçeneğini seçin.</li>
-            </ol>
+            <h4 style={{ color: 'var(--accent-color)', marginBottom: '0.5rem' }}>GPS'li Fotoğraflar</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Parsel modülündeki <b>"Fotoğraf Yükle"</b> butonu ile çekilen resimleri haritaya dökün.</p>
           </div>
         </div>
+        <TipBox title="Dikkat">
+          Fotoğraflarınızın haritada görünmesi için çekim sırasında telefonunuzun <b>Konum Etiketleme</b> özelliğinin açık olması şarttır.
+        </TipBox>
       </div>
     </section>
 
@@ -148,16 +140,9 @@ const GuideContent = () => (
       <div className="glass-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
         <div style={{ marginBottom: '1rem' }}>
           <h4 style={{ color: '#fff', marginBottom: '0.5rem' }}>⚙️ Genel Ayarlar</h4>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Profil şifrenizi, kurumsal bilgilerinizi ve firma logolarınızı buradan yönetebilirsiniz.</p>
-        </div>
-        <div style={{ marginBottom: '1rem' }}>
-          <h4 style={{ color: '#fff', marginBottom: '0.5rem' }}>🛡️ Admin Paneli</h4>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Personel ekleme/çıkarma ve sistem erişim kayıtlarını izleme yetkisi yalnızca yöneticilerdedir.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Profil şifrenizi ve kurumsal bilgilerinizi buradan yönetebilirsiniz.</p>
         </div>
       </div>
-      <TipBox>
-        <b>Firma ve İş Yönetimi:</b> Üst menüde bulunan seçicilerden yeni firma oluşturabilir, her firmanın altına sınırsız sayıda proje ekleyerek verilerinizi düzenli tutabilirsiniz.
-      </TipBox>
     </section>
 
     <div style={{ textAlign: 'center', padding: '2rem', borderTop: '1px solid var(--glass-border)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>

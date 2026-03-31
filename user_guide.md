@@ -19,68 +19,51 @@ Uygulamayı kullanmaya başlamak için kullanıcı adı ve şifrenizle giriş ya
 
 Hacim hesaplamaları ve arazi modellemesi için kullanılan ana modüldür.
 
-*   **Veri Yükleme:** `.ncn` veya `.txt` formatındaki koordinat dosyalarınızı (Nokta No, X, Y, Z_Mevcut, Z_Proje) yükleyerek analizi başlatın.
-*   **3D Görselleştirme:** Mevcut ve proje kotları arasındaki farkı 3D olarak inceleyebilir, fare ile döndürerek detaylı bakabilirsiniz.
-*   **Profil Modu:** İki nokta seçerek bu noktalar arasındaki kesiti (profil) anlık olarak görebilirsiniz.
-*   **Raporlama:** Hesaplanan Kazı/Dolgu hacimlerini PDF veya Excel formatında "Resmi Rapor" olarak indirebilirsiniz.
+*   **Veri Yükleme:** `.ncn` veya `.txt` formatındaki koordinat dosyalarını yükleyerek analizi başlatın.
+*   **3D Görselleştirme:** Mevcut ve proje kotları arasındaki farkı 3D olarak inceleyin.
+*   **Profil Modu:** İki nokta seçerek anlık kesit çıkarın.
+*   **AI Asistanı:** Hatalı kot farklarını ve ilerleme hızını otomatik analiz eder.
 
 ### 🗺️ Parsel ve Harita
 
 Konum tabanlı sorgulama ve haritalama modülüdür.
 
-*   **Koordinata Git:** Belirlediğiniz Enlem/Boylam değerlerini girerek harita üzerinde tam konumu görebilirsiniz.
-*   **Mesafe ve Alan Ölçümü:** Harita üzerindeki "Ölçüm Araçları" ile noktalar koyarak mesafe ve alan hesabı yapabilirsiniz.
-*   **KML Dışa Aktarma:** Ölçtüğün alanı veya hattı Google Earth uyumlu `.kml` formatında indirebilirsin.
-*   **Katman Kontrolü:** "Google Uydu", "Hibrit" veya "OpenStreetMap" katmanları arasında geçiş yapabilirsiniz.
+*   **Koordinata Git:** Belirlediğiniz Enlem/Boylam değerlerini girerek konumu bulun.
+*   **Ölçüm Araçları:** Mesafe ve alan hesabı yapın, KML olarak indirin.
+*   **Saha Fotoğrafları:** GPS'li fotoğrafları haritaya yükleyin (Detaylar aşağıda).
+
+### 📸 Geotagged (Konum Etiketli) Saha Fotoğrafları
+
+Arazide çektiğiniz fotoğrafları harita üzerinde çekildikleri tam noktata görebilirsiniz.
+
+*   **Yükleme:** Parsel modülündeki **"Fotoğraf Yükle (GPS)"** butonu ile fotoğrafları seçin.
+*   **Görünüm:** Harita üzerinde her fotoğraf için bir **Kamera** ikonu oluşur.
+*   **İnceleme:** İkona tıkladığınızda fotoğraf büyük bir önizleme penceresinde açılır.
+*   **Not:** Bu özelliğin çalışması için fotoğraf çekilirken telefonun GPS (Konum) özelliğinin açık olması gerekir.
 
 ### 📜 Hakediş Yönetimi
 
 Projelerin finansal hesaplamalarını ve resmi hakediş belgelerini yönetir.
 
-*   **Otomatik Veri Çekme:** Kubaj Analizindeki hacim sonuçları buraya otomatik yansır.
-*   **Birim Fiyat:** İşin birim fiyatını girerek toplam hakediş tutarını hesaplayabilirsiniz.
-*   **Manuel Kalemler:** Analiz dışındaki ek işleri (nakliye, demir vb.) tabloya manuel ekleyebilirsiniz.
-*   **İmza Alanları:** PDF raporunda görünecek "Hazırlayan" ve "Kontrol Eden" bilgilerini düzenleyebilirsiniz.
-
-### ✨ AI Saha Asistanı (Yapay Zeka Analizi)
-
-Sistem, yüklenen her veriyi akıllı algoritmalarla denetleyerek sizi uyarır.
-
-*   **Anomali Tespiti:** Koordinat yüklemelerinde ardışık noktalar arasında aşırı kot farkı (örn: 5m+) varsa "Anomali Tespiti" uyarısı verir.
-*   **İlerleme Takibi:** Yeni bir hacim hesaplandığında, arşivdeki eski versiyonlarla kıyaslama yaparak ilerleme hızını raporlar.
-*   **Fiyat Denetimi:** Hakediş tablosundaki maliyet ve miktar sapmalarını analiz ederek bütçe kontrolü sağlar.
+*   **Otomatik Veri:** Kubaj sonuçları buraya otomatik yansır.
+*   **Manuel İşler:** Ek kalemleri (demir, nakliye vb.) tabloya ekleyebilirsiniz.
 
 ### 📱 Saha Modu ve Çevrimdışı Çalışma (PWA)
 
-Arazide internetin çekmediği durumlar için uygulama **PWA** desteği ile donatılmıştır.
+İnternetin çekmediği durumlar için uygulama **PWA** desteği ile donatılmıştır.
 
-*   **Telefona Yükleme:** Tarayıcı ayarlarından (Android: Üç nokta / iOS: Paylaş) "Ana Ekrana Ekle"yi seçerek portalı uygulama olarak kullanabilirsiniz.
-*   **İnternetsiz Giriş:** internet kesildiğinde sistem "Saha Modu"na geçer; yapılan kayıtlar telefon hafızasında saklanır.
-*   **Otomatik Senkronizasyon:** İnternet bağlantısı sağlandığı an verileriniz sessizce merkeze yedeklenir.
-
-### 📂 İş Takip ve Arşiv Paneli
-
-Tüm firmalara ait tüm projeleri tek bir merkezden görmenizi sağlar.
-
-*   **Merkezi Liste:** Hangi firmanın hangi işinde ne kadar hacim yapıldığını özet olarak görün.
-*   **Hızlı Arama:** İş adına veya firma adına göre anlık filtreleme yapın.
-*   **Toplu Özet PDF:** Tüm projelerin listesini içeren tek bir toplu rapor oluşturun.
+*   **Telefona Yükleme:** Tarayıcıdan "Ana Ekrana Ekle" diyerek portalı uygulama olarak kullanın.
+*   **Offline Kayıt:** İnternet yokken yapılan kayıtlar telefon hafızasında tutulur ve bağlantı gelince senkronize edilir.
 
 ---
 
 ## 3. Ayarlar ve Yönetim
 
-### ⚙️ Genel Ayarlar
-
-*   **Profil:** Kendi kullanıcı şifrenizi güncelleyebilirsiniz.
-*   **Kurumsal:** Firma logonuzu yükleyebilir, imzalarda görünecek varsayılan isimleri tanımlayabilirsiniz.
-
-### 🛡️ Admin Paneli (Yalnızca Yöneticiler)
-
-*   **Kullanıcı Yönetimi:** Yeni personel ekleyebilir veya mevcut kullanıcıları silebilirsiniz.
-*   **Giriş Logları:** Sisteme kimlerin giriş denemesi yaptığını IP ve tarih bilgisiyle takip edebilirsiniz.
+*   **Şifre İşlemleri:** Profil sekmesinden şifrenizi güncelleyebilirsiniz.
+*   **Kurumsal:** Firma logosunu ve imza yetkililerini düzenleyebilirsiniz.
+*   **Admin:** (Sadece Yönetici) Yeni kullanıcı ekleme ve giriş kayıtlarını izleme.
 
 ---
 
 > [!TIP]
-> **Firma ve İş Yönetimi:** Üst menüde bulunan seçicilerden yeni firma oluşturabilir, her firmanın altına sınırsız sayıda proje ekleyerek verilerinizi düzenli tutabilirsiniz.
+> **Firma Yönetimi:** Üst menüde bulunan seçicilerden yeni firma oluşturabilir, her firmanın altına sınırsız sayıda proje ekleyebilirsiniz.

@@ -6,8 +6,9 @@ import {
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
   Plus, PlusSquare, Building2, FileCheck, RefreshCw,
   PlusSquare, FileCheck, Building2, FileCheck, RefreshCw,
-  LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory, Sparkles, TrendingDown, TrendingUp, AlertCircle
+  LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory, Sparkles, TrendingDown, TrendingUp, AlertCircle, Camera, Image as ImageIcon
 } from 'lucide-react';
+import EXIF from 'exif-js';
 import GuideContent from './GuideContent';
 import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
 import * as THREE from 'three';
@@ -261,6 +262,52 @@ function App() {
   const [measureMode, setMeasureMode] = useState(null); // 'distance' | 'area'
   const [measurePoints, setMeasurePoints] = useState([]);
   const [calculatedResult, setCalculatedResult] = useState('');
+
+  // Geotagged Photos State
+  const [photoMarkers, setPhotoMarkers] = useState([]);
+
+  // DMS to Decimal Helper
+  const convertDMSToDecimal = (dms, ref) => {
+    if (!dms) return null;
+    const degrees = dms[0].numerator / dms[0].denominator;
+    const minutes = dms[1].numerator / dms[1].denominator;
+    const seconds = dms[2].numerator / dms[2].denominator;
+    let decimal = degrees + (minutes / 60) + (seconds / 3600);
+    if (ref === 'S' || ref === 'W') decimal = decimal * -1;
+    return decimal;
+  };
+
+  const handlePhotoUpload = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      EXIF.getData(file, function() {
+        const lat = EXIF.getTag(this, "GPSLatitude");
+        const latRef = EXIF.getTag(this, "GPSLatitudeRef");
+        const lng = EXIF.getTag(this, "GPSLongitude");
+        const lngRef = EXIF.getTag(this, "GPSLongitudeRef");
+
+        if (lat && lng) {
+          const decimalLat = convertDMSToDecimal(lat, latRef);
+          const decimalLng = convertDMSToDecimal(lng, lngRef);
+          
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setPhotoMarkers(prev => [...prev, {
+              id: Date.now() + Math.random(),
+              url: reader.result,
+              lat: decimalLat,
+              lng: decimalLng,
+              name: file.name,
+              date: EXIF.getTag(this, "DateTimeOriginal") || new Date().toLocaleString()
+            }]);
+          };
+          reader.readAsDataURL(file);
+        } else {
+          alert(`"${file.name}" içinde konum verisi bulunamadı. Lütfen GPS etiketli bir fotoğraf seçin.`);
+        }
+      });
+    });
+  };
 
   // PWA Offline / Online States
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -1962,6 +2009,17 @@ function App() {
                 <p style={{ color: 'var(--text-muted)' }}>Gerçek dünya üzerinde konum inceleme ve sorgulama</p>
               </div>
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <label className="btn" style={{ cursor: 'pointer', display: 'inline-flex', background: 'var(--accent-color)' }}>
+                  <Camera size={18} style={{ marginRight: '8px' }} />
+                  Fotoğraf Yükle (GPS)
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    multiple 
+                    hidden 
+                    onChange={handlePhotoUpload} 
+                  />
+                </label>
                 <a 
                   href="https://parselsorgu.tkgm.gov.tr/" 
                   target="_blank" 
@@ -2105,6 +2163,28 @@ function App() {
                     <FlyToLocation lat={targetLocation.lat} lng={targetLocation.lng} />
                   </>
                 )}
+
+                {/* Geotagged Photos */}
+                {photoMarkers.map((photo) => (
+                  <Marker 
+                    key={photo.id} 
+                    position={[photo.lat, photo.lng]}
+                    icon={L.divIcon({
+                      className: 'custom-camera-icon',
+                      html: `<div style="background: var(--accent-color); border: 2px solid white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); color: white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg></div>`,
+                      iconSize: [30, 30],
+                      iconAnchor: [15, 15]
+                    })}
+                  >
+                    <Popup className="photo-popup">
+                      <div style={{ maxWidth: '200px' }}>
+                        <img src={photo.url} alt={photo.name} style={{ width: '100%', borderRadius: '8px', marginBottom: '8px' }} />
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fff' }}>{photo.name}</div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{photo.date}</div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
               </MapContainer>
             </main>
           </div>
