@@ -5,13 +5,16 @@ import {
   FileText, Download, LayoutDashboard, Settings, 
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
   Plus, PlusSquare, Building2, FileCheck, RefreshCw,
-  LogOut, CircleUser, BookOpen
+  LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory
 } from 'lucide-react';
 import GuideContent from './GuideContent';
 import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { MapContainer, TileLayer, LayersControl, Marker, useMap } from 'react-leaflet';
+import { 
+  MapContainer, TileLayer, Marker, Popup, useMap, 
+  LayersControl, useMapEvents, Polyline, Polygon, Tooltip 
+} from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -223,6 +226,98 @@ function App() {
   const [mapLat, setMapLat] = useState('');
   const [mapLng, setMapLng] = useState('');
   const [targetLocation, setTargetLocation] = useState(null);
+
+  // Advanced Map Tools State
+  const [measureMode, setMeasureMode] = useState(null); // 'distance' | 'area'
+  const [measurePoints, setMeasurePoints] = useState([]);
+  const [calculatedResult, setCalculatedResult] = useState('');
+
+  // Calculations
+  const calculateDistance = (points) => {
+    if (points.length < 2) return 0;
+    let total = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      total += L.latLng(points[i]).distanceTo(L.latLng(points[i+1]));
+    }
+    return total;
+  };
+
+  const calculateArea = (points) => {
+    if (points.length < 3) return 0;
+    // Simple Shoelace Formula for Area (Planar approximation for small areas)
+    let area = 0;
+    const factor = 111319.9; // approx meters per degree
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      const x1 = points[i].lng * factor * Math.cos(points[i].lat * Math.PI / 180);
+      const y1 = points[i].lat * factor;
+      const x2 = points[j].lng * factor * Math.cos(points[j].lat * Math.PI / 180);
+      const y2 = points[j].lat * factor;
+      area += (x1 * y2) - (x2 * y1);
+    }
+    return Math.abs(area) / 2;
+  };
+
+  useEffect(() => {
+    if (measurePoints.length > 0) {
+      if (measureMode === 'distance') {
+        const d = calculateDistance(measurePoints);
+        setCalculatedResult(d > 1000 ? `${(d/1000).toFixed(3)} km` : `${Math.round(d)} m`);
+      } else if (measureMode === 'area') {
+        const a = calculateArea(measurePoints);
+        setCalculatedResult(a > 10000 ? `${(a/10000).toFixed(2)} Ha (Hektar)` : `${Math.round(a)} m²`);
+      }
+    } else {
+      setCalculatedResult('');
+    }
+  }, [measurePoints, measureMode]);
+
+  const handleDownloadKml = () => {
+    if (measurePoints.length === 0) return;
+    
+    let coordinatesStr = measurePoints.map(p => `${p.lng},${p.lat},0`).join(' ');
+    if (measureMode === 'area') coordinatesStr += ` ${measurePoints[0].lng},${measurePoints[0].lat},0`;
+
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Portal Olcum Export</name>
+    <Style id="polyStyle">
+      <LineStyle><color>ff3b82f6</color><width>3</width></LineStyle>
+      <PolyStyle><color>4d3b82f6</color></PolyStyle>
+    </Style>
+    <Placemark>
+      <name>${measureMode === 'area' ? 'Olculen Alan' : 'Olculen Mesafe'}</name>
+      <styleUrl>#polyStyle</styleUrl>
+      ${measureMode === 'area' ? `
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>${coordinatesStr}</coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>` : `
+      <LineString>
+        <coordinates>${coordinatesStr}</coordinates>
+      </LineString>`}
+    </Placemark>
+  </Document>
+</kml>`;
+
+    const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mesafe_ölçüm_${new Date().getTime()}.kml`;
+    a.click();
+  };
+
+  const MapClickHandler = () => {
+    useMapEvents({
+      click(e) {
+        if (measureMode) {
+          setMeasurePoints(prev => [...prev, e.latlng]);
+        }
+      }
+    });
+    return null;
+  };
 
   const navigationItems = [
     { id: 'kubaj', label: 'Kubaj Analizi', icon: <BarChart3 size={18} /> },
@@ -1684,6 +1779,54 @@ function App() {
             </header>
             
             <main style={{ flex: 1, position: 'relative' }}>
+              {/* Measurement Result Badge */}
+              {calculatedResult && (
+                <div className="measure-badge">
+                   {measureMode === 'distance' ? <Ruler size={16} /> : <Square size={16} />}
+                   {calculatedResult}
+                </div>
+              )}
+
+              {/* Advanced Tool Panel */}
+              <div className="map-measure-panel">
+                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Ölçüm Araçları</div>
+                <div className="map-btn-group">
+                  <button 
+                    className={`map-tool-btn ${measureMode === 'distance' ? 'active' : ''}`}
+                    onClick={() => { setMeasureMode(measureMode === 'distance' ? null : 'distance'); setMeasurePoints([]); }}
+                  >
+                    <Ruler size={18} /> Mesafe
+                  </button>
+                  <button 
+                    className={`map-tool-btn ${measureMode === 'area' ? 'active' : ''}`}
+                    onClick={() => { setMeasureMode(measureMode === 'area' ? null : 'area'); setMeasurePoints([]); }}
+                  >
+                    <Square size={18} /> Alan
+                  </button>
+                </div>
+                <div className="map-btn-group" style={{ marginTop: '4px' }}>
+                  <button 
+                    className="map-tool-btn"
+                    onClick={() => { setMeasurePoints([]); setCalculatedResult(''); }}
+                  >
+                    <Trash2 size={18} /> Temizle
+                  </button>
+                  <button 
+                    className="map-tool-btn"
+                    onClick={handleDownloadKml}
+                    disabled={measurePoints.length < 2}
+                    style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--accent-color)', color: 'var(--accent-color)' }}
+                  >
+                    <Save size={18} /> KML İndir
+                  </button>
+                </div>
+                {measureMode && (
+                  <div style={{ fontSize: '0.65rem', color: 'var(--primary-color)', marginTop: '8px', fontStyle: 'italic' }}>
+                    * Harita üzerine tıklayarak nokta ekleyin.
+                  </div>
+                )}
+              </div>
+
               <div style={{ position: 'absolute', top: 20, left: 60, zIndex: 1000, background: 'rgba(15, 23, 42, 0.85)', padding: '15px', borderRadius: '8px', border: '1px solid var(--glass-border)', backdropFilter: 'blur(10px)' }}>
                 <h4 style={{ color: '#fff', marginBottom: '10px', fontSize: '1rem' }}>Koordinata Git</h4>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
@@ -1724,6 +1867,7 @@ function App() {
                 zoom={6} 
                 style={{ height: '100%', width: '100%', background: '#0f172a' }}
               >
+                <MapClickHandler />
                 <LayersControl position="topright">
                   <LayersControl.BaseLayer name="OpenStreetMap">
                     <TileLayer
@@ -1747,6 +1891,18 @@ function App() {
                   </LayersControl.BaseLayer>
                 </LayersControl>
                 
+                {measurePoints.map((p, i) => (
+                  <Marker key={i} position={p} icon={L.divIcon({ className: 'custom-div-icon', html: `<div style="background: var(--primary-color); width: 8px; height: 8px; border-radius: 50%; border: 2px solid white;"></div>`, iconSize: [8, 8], iconAnchor: [4, 4] })} />
+                ))}
+
+                {measureMode === 'distance' && measurePoints.length > 1 && (
+                  <Polyline positions={measurePoints} color="var(--primary-color)" weight={4} dashArray="10, 10" />
+                )}
+
+                {measureMode === 'area' && measurePoints.length > 2 && (
+                  <Polygon positions={measurePoints} color="var(--primary-color)" fillColor="var(--primary-color)" fillOpacity={0.3} weight={3} />
+                )}
+
                 {targetLocation && (
                   <>
                     <Marker position={[targetLocation.lat, targetLocation.lng]} />

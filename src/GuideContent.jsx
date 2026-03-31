@@ -75,6 +75,16 @@ const GuideContent = () => (
         </div>
 
         <div className="glass-card" style={{ padding: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '8px' }}>🗺️ Parsel ve Harita</h3>
+          <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <li><b>Koordinata Git:</b> Enlem ve Boylam girerek noktayı bulun.</li>
+            <li><b>Ölçüm Araçları:</b> Harita üzerinden mesafe ve alan hesabı yapın.</li>
+            <li><b>KML İndir:</b> Ölçümleri Google Earth için dışa aktarın.</li>
+            <li><b>Katmanlar:</b> Uydu ve Harita görünümleri arasında geçiş yapın.</li>
+          </ul>
+        </div>
+
+        <div className="glass-card" style={{ padding: '1.5rem' }}>
           <h3 style={{ marginBottom: '1rem', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>📜 Hakediş Yönetimi</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
             <li><b>Otomatik Veri:</b> Kubaj sonuçları buraya anlık yansır.</li>
