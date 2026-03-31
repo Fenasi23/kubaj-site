@@ -1778,9 +1778,6 @@ function App() {
 
   return (
     <div className="dashboard-container">
-      {/* Premium Background Effects */}
-      <div className="mesh-bg"></div>
-      
       {/* Mobil Toggle */}
       <button 
         className="sidebar-toggle-mobile"
@@ -1798,18 +1795,13 @@ function App() {
 
       {/* Sidebar */}
       <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-header" style={{ marginBottom: '1.5rem', padding: '2rem 1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ 
-              background: 'linear-gradient(135deg, var(--primary-color), var(--primary-hover))', 
-              padding: '0.6rem', 
-              borderRadius: '12px',
-              boxShadow: '0 8px 20px rgba(59, 130, 246, 0.3)' 
-            }}>
-              <MapIcon size={22} color="white" />
+        <div className="sidebar-header" style={{ marginBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: 'var(--primary-color)', padding: '0.5rem', borderRadius: '8px' }}>
+              <MapIcon size={24} color="white" />
             </div>
             {!isSidebarCollapsed && (
-              <span style={{ fontWeight: 900, fontSize: '1.15rem', letterSpacing: '-0.8px', color: '#fff' }}>HARİTA PORTALI</span>
+              <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.5px' }}>Harita Portalı</span>
             )}
           </div>
         </div>
