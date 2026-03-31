@@ -5,8 +5,9 @@ import {
   FileText, Download, LayoutDashboard, Settings, 
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
   Plus, PlusSquare, Building2, FileCheck, RefreshCw,
-  LogOut, CircleUser
+  LogOut, CircleUser, BookOpen
 } from 'lucide-react';
+import GuideContent from './GuideContent';
 import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -230,6 +231,7 @@ function App() {
     { id: 'archive', label: 'İş Takip Paneli', icon: <LayoutDashboard size={18} /> },
     { id: 'converter', label: 'Format Dönüştürücü', icon: <RefreshCw size={18} /> },
     { id: 'settings', label: 'Ayarlar', icon: <Settings size={18} /> },
+    { id: 'guide', label: 'Kullanım Kılavuzu', icon: <BookOpen size={18} /> },
   ];
 
   const [hakedisDetails, setHakedisDetails] = useState({
@@ -1652,6 +1654,12 @@ function App() {
                 </div>
               </section>
             </main>
+          </div>
+        );
+      case 'guide':
+        return (
+          <div className="module-container anim-fade-in" style={{ padding: '2rem' }}>
+            <GuideContent />
           </div>
         );
       case 'parsel':
