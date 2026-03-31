@@ -21,8 +21,16 @@ Hacim hesaplamaları ve arazi modellemesi için kullanılan ana modüldür.
 
 *   **Veri Yükleme:** `.ncn` veya `.txt` formatındaki koordinat dosyalarını yükleyerek analizi başlatın.
 *   **3D Görselleştirme:** Mevcut ve proje kotları arasındaki farkı 3D olarak inceleyin.
-*   **Profil Modu:** İki nokta seçerek anlık kesit çıkarın.
 *   **AI Asistanı:** Hatalı kot farklarını ve ilerleme hızını otomatik analiz eder.
+
+### 🛸 3D Nokta Bulutu (Drone & LiDAR)
+
+Geleceğin haritacılık standardı olan milyonlarca noktalı veri setlerini inceleme modülüdür.
+
+*   **Dosya Desteği:** Drone çıktısı olan **.ply** ve LiDAR çıktısı olan **.pcd** dosyalarını yükleyin.
+*   **Yüksek Performans:** GPU (Ekran Kartı) kullanarak milyonlarca noktayı 3D ortamda dökün.
+*   **Kot Renklendirme:** Araziyi yüksekliğe göre (Mavi -> Kırmızı) otomatik renklendirilmiş şekilde görün.
+*   **Navigasyon:** Mouse ile 3D uzayda özgürce gezinin, yaklaşın ve detayları inceleyin.
 
 ### 🗺️ Parsel ve Harita
 
@@ -30,30 +38,21 @@ Konum tabanlı sorgulama ve haritalama modülüdür.
 
 *   **Koordinata Git:** Belirlediğiniz Enlem/Boylam değerlerini girerek konumu bulun.
 *   **Ölçüm Araçları:** Mesafe ve alan hesabı yapın, KML olarak indirin.
-*   **Saha Fotoğrafları:** GPS'li fotoğrafları haritaya yükleyin (Detaylar aşağıda).
+*   **Saha Fotoğrafları:** GPS'li fotoğrafları haritaya yükleyin.
 
-### 📸 Geotagged (Konum Etiketli) Saha Fotoğrafları
+### 📸 Saha Fotoğrafları (GPS)
 
 Arazide çektiğiniz fotoğrafları harita üzerinde çekildikleri tam noktata görebilirsiniz.
 
 *   **Yükleme:** Parsel modülündeki **"Fotoğraf Yükle (GPS)"** butonu ile fotoğrafları seçin.
-*   **Görünüm:** Harita üzerinde her fotoğraf için bir **Kamera** ikonu oluşur.
 *   **İnceleme:** İkona tıkladığınızda fotoğraf büyük bir önizleme penceresinde açılır.
-*   **Not:** Bu özelliğin çalışması için fotoğraf çekilirken telefonun GPS (Konum) özelliğinin açık olması gerekir.
-
-### 📜 Hakediş Yönetimi
-
-Projelerin finansal hesaplamalarını ve resmi hakediş belgelerini yönetir.
-
-*   **Otomatik Veri:** Kubaj sonuçları buraya otomatik yansır.
-*   **Manuel İşler:** Ek kalemleri (demir, nakliye vb.) tabloya ekleyebilirsiniz.
 
 ### 📱 Saha Modu ve Çevrimdışı Çalışma (PWA)
 
 İnternetin çekmediği durumlar için uygulama **PWA** desteği ile donatılmıştır.
 
 *   **Telefona Yükleme:** Tarayıcıdan "Ana Ekrana Ekle" diyerek portalı uygulama olarak kullanın.
-*   **Offline Kayıt:** İnternet yokken yapılan kayıtlar telefon hafızasında tutulur ve bağlantı gelince senkronize edilir.
+*   **Offline Kayıt:** İnternet yokken yapılan kayıtlar telefon hafızasında tutulur.
 
 ---
 
@@ -61,9 +60,8 @@ Projelerin finansal hesaplamalarını ve resmi hakediş belgelerini yönetir.
 
 *   **Şifre İşlemleri:** Profil sekmesinden şifrenizi güncelleyebilirsiniz.
 *   **Kurumsal:** Firma logosunu ve imza yetkililerini düzenleyebilirsiniz.
-*   **Admin:** (Sadece Yönetici) Yeni kullanıcı ekleme ve giriş kayıtlarını izleme.
 
 ---
 
 > [!TIP]
-> **Firma Yönetimi:** Üst menüde bulunan seçicilerden yeni firma oluşturabilir, her firmanın altına sınırsız sayıda proje ekleyebilirsiniz.
+> **Donanım Önerisi:** 3D Nokta Bulutu modülünde milyonlarca noktayı akıcı izlemek için harici ekran kartına (GPU) sahip cihazlar kullanmanızı öneririz.

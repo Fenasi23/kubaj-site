@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, AlertTriangle, Lightbulb, CheckCircle2, Sparkles, Smartphone, Camera, Image as ImageIcon } from 'lucide-react';
+import { Info, AlertTriangle, Lightbulb, CheckCircle2, Sparkles, Smartphone, Camera, Image as ImageIcon, Target } from 'lucide-react';
 
 const TipBox = ({ children, title = "İpucu" }) => (
   <div style={{ 
@@ -67,36 +67,34 @@ const GuideContent = () => (
         <div className="glass-card" style={{ padding: '1.5rem' }}>
           <h3 style={{ marginBottom: '1rem', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>📊 Kubaj Analizi</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Veri Yükleme:</b> .ncn veya .txt formatındaki koordinat dosyalarını yükleyin.</li>
-            <li><b>3D Görselleştirme:</b> Araziyi 3 boyutlu olarak inceleyin ve döndürün.</li>
+            <li><b>Veri Yükleme:</b> .ncn veya .txt dosyalarını yükleyin.</li>
+            <li><b>3D Görselleştirme:</b> Araziyi 3 boyutlu olarak inceleyin.</li>
             <li><b>Profil Modu:</b> İki nokta seçerek anlık kesit çıkarın.</li>
-            <li><b>Raporlama:</b> Resmi Kazı/Dolgu raporlarını PDF/Excel olarak alın.</li>
+          </ul>
+        </div>
+
+        <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(16, 185, 129, 0.1))', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+          <h3 style={{ marginBottom: '1rem', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '8px' }}>🛸 3D Nokta Bulutu</h3>
+          <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <li><b>Drone & LiDAR:</b> Milyonlarca noktayı 3D ortamda dökün.</li>
+            <li><b>Ply/Pcd Desteği:</b> Sektör standardı dosyaları sürükleyip yükleyin.</li>
+            <li><b>Kot Renkleri:</b> Yüksekliğe göre otomatik renklendirilmiş arazi.</li>
           </ul>
         </div>
 
         <div className="glass-card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '8px' }}>🗺️ Parsel ve Harita</h3>
-          <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Koordinata Git:</b> Enlem ve Boylam girerek noktayı bulun.</li>
-            <li><b>Ölçüm Araçları:</b> Harita üzerinden mesafe ve alan hesabı yapın.</li>
-            <li><b>Katmanlar:</b> Uydu ve Harita görünümleri arasında geçiş yapın.</li>
-          </ul>
-        </div>
-
-        <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1))', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
           <h3 style={{ marginBottom: '1rem', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>📸 Saha Fotoğrafları</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Konum Etiketli:</b> GPS verisi içeren fotoğrafları haritaya yükleyin.</li>
-            <li><b>Otomatik Yerleşim:</b> Fotoğraflar çekildikleri tam noktada belirir.</li>
-            <li><b>Popup Önizleme:</b> İkonlara tıklayarak fotoğrafları büyük görün.</li>
+            <li><b>Konum Etiketli:</b> GPS verisi içeren fotoğrafları haritaya yerleştirin.</li>
+            <li><b>İnceleme:</b> Fotoğraflar çekildikleri tam noktada ikon olarak belirir.</li>
           </ul>
         </div>
 
         <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1))', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
           <h3 style={{ marginBottom: '1rem', color: '#a855f7', display: 'flex', alignItems: 'center', gap: '8px' }}>✨ AI Saha Asistanı</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Anomali Tespiti:</b> Hatalı veri ve ani kot farklarını bulur.</li>
-            <li><b>İlerleme Analizi:</b> Mevcut işi eski hakedişlerle kıyaslar.</li>
+            <li><b>Anomali:</b> Hatalı koordinat ve kot farklarını yakalar.</li>
+            <li><b>İlerleme:</b> Eski ölçümlerle kıyaslama yapar.</li>
           </ul>
         </div>
         
@@ -104,7 +102,7 @@ const GuideContent = () => (
           <h3 style={{ marginBottom: '1rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '8px' }}>📱 Saha Modu (PWA)</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
             <li><b>Cihaza Yükle:</b> Uygulamayı ana ekrana ekleyip kullanın.</li>
-            <li><b>Offline Kayıt:</b> İnternet yokken verileri telefon hafızasında tutar.</li>
+            <li><b>Offline:</b> İnternet yokken verileri telefonda tutar.</li>
           </ul>
         </div>
       </div>
@@ -112,23 +110,19 @@ const GuideContent = () => (
 
     <section style={{ marginBottom: '3rem' }}>
       <h2 style={{ fontSize: '1.5rem', borderBottom: '2px solid var(--glass-border)', paddingBottom: '0.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <Smartphone size={24} color="var(--primary-color)" />
-        3. Saha Modu ve Fotoğraflar
+        <Target size={24} color="var(--primary-color)" />
+        3. Drone ve LiDAR (Point Cloud) İşlemleri
       </h2>
       <div className="glass-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
-        <p style={{ marginBottom: '1rem', lineHeight: 1.6 }}>Saha çalışmalarını profesyonelleştiren yeni araçlarımız:</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-          <div>
-            <h4 style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>Mobil Yükleme</h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Chrome veya Safari ayarlarından "Ana Ekrana Ekle" diyerek uygulamayı sahada daha hızlı kullanın.</p>
-          </div>
-          <div>
-            <h4 style={{ color: 'var(--accent-color)', marginBottom: '0.5rem' }}>GPS'li Fotoğraflar</h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Parsel modülündeki <b>"Fotoğraf Yükle"</b> butonu ile çekilen resimleri haritaya dökün.</p>
-          </div>
-        </div>
-        <TipBox title="Dikkat">
-          Fotoğraflarınızın haritada görünmesi için çekim sırasında telefonunuzun <b>Konum Etiketleme</b> özelliğinin açık olması şarttır.
+        <p style={{ marginBottom: '1rem', lineHeight: 1.6 }}>Geleceğin haritacılık standardı olan nokta bulutu modülünü verimli kullanmak için:</p>
+        <ol style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.8 }}>
+          <li>Fotogrametri (Drone) veya LiDAR cihazınızdan çıkan <b>.ply</b> veya <b>.pcd</b> formatlı dosyaları hazırlayın.</li>
+          <li><b>"Bulut Yükle"</b> butonu ile dosyayı seçin (Milyonlarca nokta saniyeler içinde işlenecektir).</li>
+          <li>Mouse ile 3D uzayda gezinebilir, mouse wheel ile yaklaşabilirsiniz.</li>
+          <li>Kot Renkleri otomatik olarak atanır; Mavi tonlar alçak, Kırmızı tonlar yüksek bölgeleri simgeler.</li>
+        </ol>
+        <TipBox title="Performans">
+          Çok büyük veri setlerinde (1 Milyon+ nokta) akıcı performans için <b>harici ekran kartına (GPU)</b> sahip bir bilgisayar kullanmanız önerilir.
         </TipBox>
       </div>
     </section>
@@ -138,10 +132,7 @@ const GuideContent = () => (
         4. Ayarlar ve Yönetim
       </h2>
       <div className="glass-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <h4 style={{ color: '#fff', marginBottom: '0.5rem' }}>⚙️ Genel Ayarlar</h4>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Profil şifrenizi ve kurumsal bilgilerinizi buradan yönetebilirsiniz.</p>
-        </div>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Profil şifrenizi ve kurumsal bilgilerinizi ayarlar sekmesinden yönetebilirsiniz.</p>
       </div>
     </section>
 

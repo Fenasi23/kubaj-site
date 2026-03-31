@@ -13,6 +13,9 @@ import GuideContent from './GuideContent';
 import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
+import { PCDLoader } from 'three/examples/jsm/loaders/PCDLoader.js';
+import PointCloudViewer from './PointCloudViewer';
 import { 
   MapContainer, TileLayer, Marker, Popup, useMap, 
   LayersControl, useMapEvents, Polyline, Polygon, Tooltip 
@@ -263,6 +266,49 @@ function App() {
   const [measurePoints, setMeasurePoints] = useState([]);
   const [calculatedResult, setCalculatedResult] = useState('');
 
+  // Point Cloud State
+  const [pointCloudData, setPointCloudData] = useState(null);
+  const [isCloudLoading, setIsCloudLoading] = useState(false);
+
+  const handlePointCloudUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsCloudLoading(true);
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const contents = event.target.result;
+      let loader;
+
+      if (file.name.endsWith('.ply')) {
+        loader = new PLYLoader();
+      } else if (file.name.endsWith('.pcd')) {
+        loader = new PCDLoader();
+      } else {
+        alert("Sadece .ply ve .pcd formatları desteklenmektedir.");
+        setIsCloudLoading(false);
+        return;
+      }
+
+      try {
+        const geometry = loader.parse(contents);
+        const positions = geometry.attributes.position.array;
+        const colors = geometry.attributes.color ? geometry.attributes.color.array : null;
+
+        setPointCloudData({ positions, colors });
+        setIsCloudLoading(false);
+      } catch (err) {
+        console.error("Point cloud parse error", err);
+        alert("Dosya okunamadı!");
+        setIsCloudLoading(false);
+      }
+    };
+
+    if (file.name.endsWith('.ply') || file.name.endsWith('.pcd')) {
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
   // Geotagged Photos State
   const [photoMarkers, setPhotoMarkers] = useState([]);
 
@@ -512,6 +558,7 @@ function App() {
   const navigationItems = [
     { id: 'kubaj', label: 'Kubaj Analizi', icon: <BarChart3 size={18} /> },
     { id: 'parsel', label: 'Parsel ve Harita', icon: <MapIcon size={18} /> },
+    { id: 'pointcloud', label: '3D Nokta Bulutu', icon: <Target size={18} /> },
     { id: 'hakedis', label: 'Hakediş Yönetimi', icon: <FileCheck size={18} /> },
     { id: 'archive', label: 'İş Takip Paneli', icon: <LayoutDashboard size={18} /> },
     { id: 'converter', label: 'Format Dönüştürücü', icon: <RefreshCw size={18} /> },
@@ -2189,6 +2236,65 @@ function App() {
             </main>
           </div>
         );
+      case 'pointcloud':
+        return (
+          <div className="module-container anim-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: 0 }}>
+            <header className="module-header" style={{ padding: '1rem 2rem', borderBottom: '1px solid var(--glass-border)', background: 'var(--sidebar-bg)' }}>
+              <div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>3D Nokta Bulutu (Drone/LiDAR)</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Milyonlarca noktayı 3D olarak inceleyin ve görselleştirin</p>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <label className="btn" style={{ cursor: 'pointer', display: 'inline-flex', background: 'var(--primary-color)' }}>
+                  <Target size={18} style={{ marginRight: '8px' }} />
+                  Bulut Yükle (.ply, .pcd)
+                  <input 
+                    type="file" 
+                    accept=".ply,.pcd" 
+                    hidden 
+                    onChange={handlePointCloudUpload} 
+                  />
+                </label>
+                {pointCloudData && (
+                  <button className="btn btn-secondary" onClick={() => setPointCloudData(null)}>
+                    <Trash2 size={18} /> Veriyi Temizle
+                  </button>
+                )}
+              </div>
+            </header>
+
+            <main style={{ flex: 1, position: 'relative', background: '#020617' }}>
+              {isCloudLoading && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
+                  <RefreshCw className="anim-spin" size={48} color="var(--primary-color)" />
+                  <p style={{ marginTop: '1rem', fontWeight: 700 }}>Noktalar İşleniyor...</p>
+                </div>
+              )}
+
+              {!pointCloudData && !isCloudLoading && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', opacity: 0.5 }}>
+                  <Target size={64} style={{ marginBottom: '1rem' }} />
+                  <h3>Henüz veri yüklenmedi</h3>
+                  <p>PLY veya PCD formatındaki drone çıktılarını buraya yükleyin.</p>
+                </div>
+              )}
+
+              {pointCloudData && (
+                <div style={{ height: '100%', width: '100%' }}>
+                  <Canvas 
+                    camera={{ position: [50, 50, 50], fov: 45 }}
+                    style={{ background: '#020617' }}
+                  >
+                    <ambientLight intensity={0.5} />
+                    <pointLight position={[100, 100, 100]} />
+                    <PointCloudViewer data={pointCloudData} />
+                    <OrbitControls minDistance={1} maxDistance={2000} />
+                  </Canvas>
+                </div>
+              )}
+            </main>
+          </div>
+        );
       default:
         return null;
     }
@@ -2331,11 +2437,17 @@ function App() {
                   background: activeModule === item.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
                   borderLeft: activeModule === item.id ? '3px solid var(--primary-color)' : '3px solid transparent',
                   color: activeModule === item.id ? 'var(--primary-color)' : 'var(--text-muted)',
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  position: 'relative'
                 }}
               >
                 {item.icon}
-                {!isSidebarCollapsed && <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{item.label}</span>}
+                {!isSidebarCollapsed && (
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{item.label}</span>
+                )}
+                {activeModule === item.id && !isSidebarCollapsed && (
+                  <ChevronRight size={16} style={{ position: 'absolute', right: '12px', opacity: 0.5 }} />
+                )}
               </button>
             ))}
           </nav>
