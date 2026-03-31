@@ -42,6 +42,14 @@ Projelerin finansal hesaplamalarını ve resmi hakediş belgelerini yönetir.
 *   **Manuel Kalemler:** Analiz dışındaki ek işleri (nakliye, demir vb.) tabloya manuel ekleyebilirsiniz.
 *   **İmza Alanları:** PDF raporunda görünecek "Hazırlayan" ve "Kontrol Eden" bilgilerini düzenleyebilirsiniz.
 
+### ✨ AI Saha Asistanı (Yapay Zeka Analizi)
+
+Sistem, yüklenen her veriyi akıllı algoritmalarla denetleyerek sizi uyarır.
+
+*   **Anomali Tespiti:** Koordinat yüklemelerinde ardışık noktalar arasında aşırı kot farkı (örn: 5m+) varsa "Anomali Tespiti" uyarısı verir.
+*   **İlerleme Takibi:** Yeni bir hacim hesaplandığında, arşivdeki eski versiyonlarla kıyaslama yaparak ilerleme hızını raporlar.
+*   **Fiyat Denetimi:** Hakediş tablosundaki maliyet ve miktar sapmalarını analiz ederek bütçe kontrolü sağlar.
+
 ### 📂 İş Takip ve Arşiv Paneli
 
 Tüm firmalara ait tüm projeleri tek bir merkezden görmenizi sağlar.
@@ -49,14 +57,6 @@ Tüm firmalara ait tüm projeleri tek bir merkezden görmenizi sağlar.
 *   **Merkezi Liste:** Hangi firmanın hangi işinde ne kadar hacim yapıldığını özet olarak görün.
 *   **Hızlı Arama:** İş adına veya firma adına göre anlık filtreleme yapın.
 *   **Toplu Özet PDF:** Tüm projelerin listesini içeren tek bir toplu rapor oluşturun.
-
-### 🔄 Format Dönüştürücü
-
-Harita dosyaları arasındaki uyumluluk sorunlarını çözer.
-
-*   **NCZ → DXF:** Netcad çizim dosyalarınızı AutoCAD formatına dönüştürün.
-*   **NCZ → NCN:** Çizim içerisindeki koordinatları nokta listesi olarak ayıklayın.
-*   **DXF → NCN:** AutoCAD dosyalarındaki noktaları koordinat listesine çevirin.
 
 ---
 

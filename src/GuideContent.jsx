@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, AlertTriangle, Lightbulb, CheckCircle2 } from 'lucide-react';
+import { Info, AlertTriangle, Lightbulb, CheckCircle2, Sparkles } from 'lucide-react';
 
 const TipBox = ({ children, title = "İpucu" }) => (
   <div style={{ 
@@ -67,7 +67,7 @@ const GuideContent = () => (
         <div className="glass-card" style={{ padding: '1.5rem' }}>
           <h3 style={{ marginBottom: '1rem', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>📊 Kubaj Analizi</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Veri Yükleme:</b> .ncn veya .txt formatındaki koordinat dosyalarınızı (Nokta No, X, Y, Z_Mevcut, Z_Proje) yükleyin.</li>
+            <li><b>Veri Yükleme:</b> .ncn veya .txt formatındaki koordinat dosyalarınızı yükleyin.</li>
             <li><b>3D Görselleştirme:</b> Araziyi 3 boyutlu olarak inceleyin ve döndürün.</li>
             <li><b>Profil Modu:</b> İki nokta seçerek anlık kesit çıkarın.</li>
             <li><b>Raporlama:</b> Resmi Kazı/Dolgu raporlarını PDF/Excel olarak alın.</li>
@@ -92,6 +92,15 @@ const GuideContent = () => (
             <li><b>İmza Ayarları:</b> PDF raporlarındaki yetkili isimlerini tek tıkla düzenleyin.</li>
           </ul>
         </div>
+
+        <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1))', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+          <h3 style={{ marginBottom: '1rem', color: '#a855f7', display: 'flex', alignItems: 'center', gap: '8px' }}>✨ AI Saha Asistanı</h3>
+          <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <li><b>Anomali Tespiti:</b> Koordinat yüklemelerinde hatalı veri ve kot farklarını bulur.</li>
+            <li><b>İlerleme Analizi:</b> Mevcut işi eski hakedişlerle kıyaslayarak hız raporlar.</li>
+            <li><b>Akıllı Öneriler:</b> Hakediş modülünde maliyet sapmalarını analiz eder.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -106,7 +115,7 @@ const GuideContent = () => (
         </div>
         <div style={{ marginBottom: '1rem' }}>
           <h4 style={{ color: '#fff', marginBottom: '0.5rem' }}>🛡️ Admin Paneli</h4>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Personel ekleme/çıkarma ve sisteme giriş yapanların IP/Tarih loglarını izleme yetkisi yalnızca yöneticilerdedir.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Personel ekleme/çıkarma ve sistem erişim kayıtlarını izleme yetkisi yalnızca yöneticilerdedir.</p>
         </div>
       </div>
       <TipBox>

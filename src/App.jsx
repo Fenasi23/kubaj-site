@@ -5,7 +5,8 @@ import {
   FileText, Download, LayoutDashboard, Settings, 
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
   Plus, PlusSquare, Building2, FileCheck, RefreshCw,
-  LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory
+  PlusSquare, FileCheck, Building2, FileCheck, RefreshCw,
+  LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory, Sparkles, TrendingDown, TrendingUp, AlertCircle
 } from 'lucide-react';
 import GuideContent from './GuideContent';
 import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
@@ -47,6 +48,31 @@ function MapControls() {
   const controlsRef = useRef();
   useFrame(() => controlsRef.current && controlsRef.current.update());
   return <orbitControls ref={controlsRef} args={[camera, gl.domElement]} enableDamping={true} />;
+}
+
+// AI Assistant Insights Card Component
+function AIAssistantCard({ insights }) {
+  if (!insights || insights.length === 0) return null;
+  
+  return (
+    <div className="glass-card ai-card anim-fade-in" style={{ marginBottom: '2rem' }}>
+      <div className="ai-badge">
+        <Sparkles size={14} /> AI Saha Asistanı
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        {insights.map((insight, idx) => (
+          <div key={idx} className={`ai-insight-item ${insight.type}`}>
+            <div style={{ color: insight.type === 'critical' ? 'var(--error-color)' : (insight.type === 'warning' ? 'var(--warning-color)' : 'var(--accent-color)') }}>
+              {insight.icon}
+            </div>
+            <div style={{ fontSize: '0.85rem', lineHeight: '1.4', color: '#fff' }}>
+              {insight.text}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // 3D Arazi Bileşeni
@@ -235,6 +261,69 @@ function App() {
   const [measureMode, setMeasureMode] = useState(null); // 'distance' | 'area'
   const [measurePoints, setMeasurePoints] = useState([]);
   const [calculatedResult, setCalculatedResult] = useState('');
+
+  // AI Assistant State
+  const [aiInsights, setAiInsights] = useState([]);
+
+  // AI Analysis Logic
+  const performAIAnalysis = useCallback((newPoints, currentVolume = null) => {
+    const insights = [];
+    
+    // 1. Elevation Anomaly Detection (Kot Farkı Analizi)
+    if (newPoints && newPoints.length > 1) {
+      let anomalyFound = false;
+      for (let i = 0; i < newPoints.length - 1; i++) {
+        const p1 = newPoints[i];
+        const p2 = newPoints[i+1];
+        const zDiff = Math.abs((p1.z_mevcut || p1.z) - (p2.z_mevcut || p2.z));
+        
+        if (zDiff > 5) {
+          insights.push({
+            type: 'critical',
+            text: `Anomali Tespiti: ${p1.no || i} ve ${p2.no || i+1} numaralı noktalar arasında ${zDiff.toFixed(2)}m kot farkı var. Lütfen kontrol edin.`,
+            icon: <AlertCircle size={18} />
+          });
+          anomalyFound = true;
+          break; // Sadece ilk büyük hatayı göster
+        }
+      }
+      if (!anomalyFound) {
+        insights.push({
+          type: 'success',
+          text: 'Kot Analizi: Noktalar arası kot geçişleri normal görünüyor.',
+          icon: <FileCheck size={18} />
+        });
+      }
+    }
+
+    // 2. Progress Analysis (İlerleme Analizi)
+    if (currentVolume !== null && archiveProjects && archiveProjects.length > 0) {
+      const pastVersions = archiveProjects.filter(p => p.jobName === selectedProject && p.firmName === selectedFirm?.name);
+      if (pastVersions.length > 0) {
+        // En son kaydedilen versiyonu bul
+        const lastVersion = pastVersions.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+        const oldVol = lastVersion.kubaj?.totalVolume || 0;
+        const diff = currentVolume - oldVol;
+        const percent = oldVol !== 0 ? ((diff / oldVol) * 100).toFixed(1) : 0;
+
+        if (diff > 0) {
+          insights.push({
+            type: 'warning',
+            text: `İlerleme Analizi: Proje hacmi geçen kayda göre ${percent}% arttı. Artış hızı: ${diff.toLocaleString('tr-TR')} m³.`,
+            icon: <TrendingUp size={18} />
+          });
+        } else if (diff < 0) {
+          insights.push({
+            type: 'critical',
+            text: `Performans Uyarısı: İlerleme hızı geçen aya göre ${Math.abs(percent)}% daha düşük.`,
+            icon: <TrendingDown size={18} />
+          });
+        }
+      }
+    }
+
+    setAiInsights(insights);
+  }, [selectedProject, selectedFirm, archiveProjects]);
 
   // Calculations
   const calculateDistance = (points) => {
@@ -538,6 +627,9 @@ function App() {
         setPoints(kResp.data.points || []);
         setResults(kResp.data.results || null);
         
+        // AI Analizini tetikle
+        performAIAnalysis(kResp.data.points || [], kResp.data.results?.totalVolume);
+        
         lastFetchedRef.current = { firmId: selectedFirm.id, jobName: selectedProject };
       } catch (error) {
         console.error("Veriler yenilenemedi:", error);
@@ -624,6 +716,9 @@ function App() {
       setPoints(resp.data.points || []);
       setResults(resp.data.results || null);
       if (resp.data.points?.length > 0) setActiveTab('results');
+      
+      // AI Analizini tetikle
+      performAIAnalysis(resp.data.points || [], resp.data.results?.totalVolume);
       
       // Analiz yüklendiğinde hakediş bilgilerini de güncelle (eğer boşsa)
       setHakedisDetails(prev => ({
@@ -1017,6 +1112,8 @@ function App() {
                     </div>
                   </div>
 
+                  <AIAssistantCard insights={aiInsights} />
+
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', justifyContent: 'center' }}>
                     <button onClick={() => handleDownload('pdf')} className="btn" style={{ background: '#ef4444' }}>
                       <FileText size={18} /> PDF Rapor
@@ -1188,6 +1285,8 @@ function App() {
             </header>
 
             <main>
+              <AIAssistantCard insights={aiInsights} />
+
               <section className="glass-card" style={{ marginBottom: '2rem' }}>
                 <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary-color)' }}>Hakediş Bilgi Formu</h3>
                 <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
