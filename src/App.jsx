@@ -21,6 +21,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
+// Leaflet Marker Fix
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
@@ -28,10 +29,13 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
+// Helper component for map flying
 function FlyToLocation({ lat, lng }) {
   const map = useMap();
   React.useEffect(() => {
-    if (lat && lng) map.flyTo([lat, lng], 18);
+    if (lat && lng) {
+      map.flyTo([lat, lng], 16, { duration: 2 });
+    }
   }, [lat, lng, map]);
   return null;
 }
