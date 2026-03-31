@@ -4,7 +4,8 @@ import {
   Upload, Map as MapIcon, BarChart3, Table as TableIcon, 
   FileText, Download, LayoutDashboard, Settings, 
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
-  Plus, PlusSquare, Building2, FileCheck, RefreshCw
+  Plus, PlusSquare, Building2, FileCheck, RefreshCw,
+  LogOut, CircleUser
 } from 'lucide-react';
 import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
 import * as THREE from 'three';
@@ -1786,12 +1787,74 @@ function App() {
 
       {/* Sidebar */}
       <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-header">
-          <div style={{ background: 'var(--primary-color)', padding: '0.5rem', borderRadius: '8px' }}>
-            <MapIcon size={24} color="white" />
+        <div className="sidebar-header" style={{ marginBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: 'var(--primary-color)', padding: '0.5rem', borderRadius: '8px' }}>
+              <MapIcon size={24} color="white" />
+            </div>
+            {!isSidebarCollapsed && (
+              <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.5px' }}>Harita Portalı</span>
+            )}
           </div>
+        </div>
+
+        {/* User Profile Section at Top */}
+        <div className={`user-profile-top ${isSidebarCollapsed ? 'collapsed' : ''}`} style={{
+          padding: '0.75rem 1rem',
+          margin: '0 0.5rem 1.5rem',
+          borderRadius: '12px',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid var(--glass-border)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          transition: 'all 0.3s ease'
+        }}>
+          <div style={{ 
+            minWidth: '36px', 
+            height: '36px', 
+            borderRadius: '10px', 
+            background: 'var(--primary-color)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            color: 'white',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+          }}>
+            <CircleUser size={20} />
+          </div>
+          
           {!isSidebarCollapsed && (
-            <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.5px' }}>Harita Portalı</span>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ 
+                  fontSize: '0.85rem', 
+                  fontWeight: 700, 
+                  color: '#fff', 
+                  whiteSpace: 'nowrap', 
+                  overflow: 'hidden', 
+                  textOverflow: 'ellipsis' 
+                }}>
+                  {currentUser}
+                </div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 700, textTransform: 'uppercase' }}>
+                  {currentRole}
+                </div>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="btn-icon-small"
+                title="Çıkış Yap"
+                style={{ 
+                  background: 'rgba(239, 68, 68, 0.1)', 
+                  color: '#ef4444', 
+                  marginLeft: '8px',
+                  padding: '6px'
+                }}
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           )}
         </div>
 
@@ -1931,32 +1994,28 @@ function App() {
           </div>
         )}
 
-        <div className="sidebar-footer" style={{ padding: '1rem', borderTop: '1px solid var(--glass-border)' }}>
-          <div style={{ marginBottom: '1rem', padding: '0.5rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)' }}>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Giriş Yapan:</div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
-              {currentUser}
-            </div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 600 }}>{currentRole?.toUpperCase()}</div>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              className="btn btn-secondary" 
-              style={{ flex: 1, justifyContent: 'center', padding: '0.5rem' }}
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            >
-              {isSidebarCollapsed ? <ChevronRight size={18} /> : <X size={18} />}
-            </button>
-            <button 
-              className="btn" 
-              style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
-              onClick={handleLogout}
-              title="Çıkış Yap"
-            >
-              <X size={18} /> 
-            </button>
-          </div>
+        <div className="sidebar-footer" style={{ padding: '0.75rem', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'center' }}>
+          <button 
+            className="nav-item" 
+            style={{ 
+              width: '100%', 
+              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+              gap: '12px',
+              padding: '0.75rem',
+              color: 'var(--text-muted)',
+              border: 'none',
+              background: 'transparent'
+            }}
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            title={isSidebarCollapsed ? "Sidebar'ı Genişlet" : "Sidebar'ı Daralt"}
+          >
+            {isSidebarCollapsed ? <ChevronRight size={20} /> : (
+              <>
+                <X size={18} />
+                <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Menüyü Daralt</span>
+              </>
+            )}
+          </button>
         </div>
       </aside>
 
