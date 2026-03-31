@@ -50,6 +50,14 @@ Sistem, yüklenen her veriyi akıllı algoritmalarla denetleyerek sizi uyarır.
 *   **İlerleme Takibi:** Yeni bir hacim hesaplandığında, arşivdeki eski versiyonlarla kıyaslama yaparak ilerleme hızını raporlar.
 *   **Fiyat Denetimi:** Hakediş tablosundaki maliyet ve miktar sapmalarını analiz ederek bütçe kontrolü sağlar.
 
+### 📱 Saha Modu ve Çevrimdışı Çalışma (PWA)
+
+Arazide internetin çekmediği durumlar için uygulama **PWA** desteği ile donatılmıştır.
+
+*   **Telefona Yükleme:** Tarayıcı ayarlarından (Android: Üç nokta / iOS: Paylaş) "Ana Ekrana Ekle"yi seçerek portalı uygulama olarak kullanabilirsiniz.
+*   **İnternetsiz Giriş:** internet kesildiğinde sistem "Saha Modu"na geçer; yapılan kayıtlar telefon hafızasında saklanır.
+*   **Otomatik Senkronizasyon:** İnternet bağlantısı sağlandığı an verileriniz sessizce merkeze yedeklenir.
+
 ### 📂 İş Takip ve Arşiv Paneli
 
 Tüm firmalara ait tüm projeleri tek bir merkezden görmenizi sağlar.

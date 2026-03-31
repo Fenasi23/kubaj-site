@@ -262,6 +262,56 @@ function App() {
   const [measurePoints, setMeasurePoints] = useState([]);
   const [calculatedResult, setCalculatedResult] = useState('');
 
+  // PWA Offline / Online States
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Senkronizasyon Mantığı
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      // İnternet geldiğinde bekleyen verileri gönder (opsiyonel geliştirme)
+      console.log("İnternet geldi, senkronize ediliyor...");
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // OTOMATİK SENKRONİZASYON (İnternet Gelince)
+  useEffect(() => {
+    if (isOnline) {
+      const syncData = async () => {
+        const pendingKubaj = localStorage.getItem('pending_kubaj');
+        const pendingHakedis = localStorage.getItem('pending_hakedis');
+
+        if (pendingKubaj) {
+          try {
+            const data = JSON.parse(pendingKubaj);
+            await axios.post(`${API_URL}/api/kubaj`, { points: data.points }, { headers: data.headers });
+            localStorage.removeItem('pending_kubaj');
+            console.log("Offline Kubaj verileri senkronize edildi.");
+          } catch(e) { console.error("Kubaj senkronizasyon hatası", e); }
+        }
+
+        if (pendingHakedis) {
+          try {
+            const data = JSON.parse(pendingHakedis);
+            await axios.post(`${API_URL}/api/hakedis`, data.payload, { headers: data.headers });
+            localStorage.removeItem('pending_hakedis');
+            console.log("Offline Hakediş verileri senkronize edildi.");
+          } catch(e) { console.error("Hakediş senkronizasyon hatası", e); }
+        }
+      };
+      syncData();
+    }
+  }, [isOnline, API_URL]);
+
   // AI Assistant State
   const [aiInsights, setAiInsights] = useState([]);
 
@@ -784,11 +834,16 @@ function App() {
 
   const handleSaveHakedis = async () => {
     if (!selectedProject) return alert("Lütfen önce bir iş seçiniz.");
+    const payload = { details: hakedisDetails, data: hakedisData };
+    const headers = getHeaders().headers;
+
+    if (!isOnline) {
+      localStorage.setItem('pending_hakedis', JSON.stringify({ payload, headers }));
+      alert('Saha Modu: İnternet yok, veriler telefonunuza kaydedildi. Bağlantı gelince otomatik senkronize edilecek.');
+      return;
+    }
+
     try {
-      const payload = {
-        details: hakedisDetails,
-        data: hakedisData
-      };
       await axios.post(`${API_URL}/api/hakedis`, payload, getHeaders());
       alert('Hakediş ve form bilgileri başarıyla kaydedildi.');
     } catch (error) {
@@ -987,6 +1042,25 @@ function App() {
       case 'kubaj':
         return (
           <div className="module-container anim-fade-in">
+            {!isOnline && (
+              <div style={{ 
+                background: 'linear-gradient(90deg, #f59e0b, #d97706)', 
+                color: 'white', 
+                padding: '8px 20px', 
+                textAlign: 'center', 
+                fontSize: '0.85rem', 
+                fontWeight: 700, 
+                borderRadius: '8px', 
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                boxShadow: '0 4px 12px rgba(217, 119, 6, 0.3)'
+              }}>
+                <Sparkles size={16} /> SAHA MODU AKTİF (Çevrimdışı Çalışıyorsunuz - Değişiklikler Yerel Olarak Saklanır)
+              </div>
+            )}
             <header className="module-header">
               <div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>
@@ -1258,6 +1332,25 @@ function App() {
       case 'hakedis':
         return (
           <div className="module-container anim-fade-in">
+            {!isOnline && (
+              <div style={{ 
+                background: 'linear-gradient(90deg, #f59e0b, #d97706)', 
+                color: 'white', 
+                padding: '8px 20px', 
+                textAlign: 'center', 
+                fontSize: '0.85rem', 
+                fontWeight: 700, 
+                borderRadius: '8px', 
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                boxShadow: '0 4px 12px rgba(217, 119, 6, 0.3)'
+              }}>
+                <Sparkles size={16} /> SAHA MODU AKTİF (İnternet Bağlantısı Yok)
+              </div>
+            )}
             <header className="module-header">
               <div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>

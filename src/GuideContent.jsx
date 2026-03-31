@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, AlertTriangle, Lightbulb, CheckCircle2, Sparkles } from 'lucide-react';
+import { Info, AlertTriangle, Lightbulb, CheckCircle2, Sparkles, Smartphone } from 'lucide-react';
 
 const TipBox = ({ children, title = "İpucu" }) => (
   <div style={{ 
@@ -67,7 +67,7 @@ const GuideContent = () => (
         <div className="glass-card" style={{ padding: '1.5rem' }}>
           <h3 style={{ marginBottom: '1rem', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>📊 Kubaj Analizi</h3>
           <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <li><b>Veri Yükleme:</b> .ncn veya .txt formatındaki koordinat dosyalarınızı yükleyin.</li>
+            <li><b>Veri Yükleme:</b> .ncn veya .txt formatındaki koordinat dosyalarını yükleyin.</li>
             <li><b>3D Görselleştirme:</b> Araziyi 3 boyutlu olarak inceleyin ve döndürün.</li>
             <li><b>Profil Modu:</b> İki nokta seçerek anlık kesit çıkarın.</li>
             <li><b>Raporlama:</b> Resmi Kazı/Dolgu raporlarını PDF/Excel olarak alın.</li>
@@ -101,12 +101,49 @@ const GuideContent = () => (
             <li><b>Akıllı Öneriler:</b> Hakediş modülünde maliyet sapmalarını analiz eder.</li>
           </ul>
         </div>
+        
+        <div className="glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.1))', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+          <h3 style={{ marginBottom: '1rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '8px' }}>📱 Saha Modu (PWA)</h3>
+          <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <li><b>Cihaza Yükle:</b> Tarayıcı ayarlarından "Ana Ekrana Ekle" diyerek uygulama olarak kullanın.</li>
+            <li><b>Offline Kayıt:</b> İnternet yokken girilen veriler telefonda saklanır.</li>
+            <li><b>Oto-Senkron:</b> İnternet geldiği an tüm veriler otomatik senkronize olur.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section style={{ marginBottom: '3rem' }}>
+      <h2 style={{ fontSize: '1.5rem', borderBottom: '2px solid var(--glass-border)', paddingBottom: '0.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <Smartphone size={24} color="var(--primary-color)" />
+        3. Saha Modu Kurulumu
+      </h2>
+      <div className="glass-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
+        <p style={{ marginBottom: '1rem', lineHeight: 1.6 }}>Arazide internetin çekmediği durumlar için uygulamayı telefonunuza yükleyebilirsiniz:</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          <div>
+            <h4 style={{ color: 'var(--primary-color)', marginBottom: '0.5rem' }}>Android (Chrome)</h4>
+            <ol style={{ paddingLeft: '1.25rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              <li>Siteye giriş yapın.</li>
+              <li>Sağ üstteki üç noktaya (⋮) basın.</li>
+              <li>"Uygulamayı YÜKLE" seçeneğini seçin.</li>
+            </ol>
+          </div>
+          <div>
+            <h4 style={{ color: 'var(--primary-color)', marginBottom: '0.5rem' }}>iOS (Safari)</h4>
+            <ol style={{ paddingLeft: '1.25rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              <li>Siteye giriş yapın.</li>
+              <li>Alt menüdeki "Paylaş" (↑) butonuna basın.</li>
+              <li>"Ana Ekrana EKLE" seçeneğini seçin.</li>
+            </ol>
+          </div>
+        </div>
       </div>
     </section>
 
     <section style={{ marginBottom: '3rem' }}>
       <h2 style={{ fontSize: '1.5rem', borderBottom: '2px solid var(--glass-border)', paddingBottom: '0.5rem', marginBottom: '1.5rem' }}>
-        3. Ayarlar ve Yönetim
+        4. Ayarlar ve Yönetim
       </h2>
       <div className="glass-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
         <div style={{ marginBottom: '1rem' }}>
