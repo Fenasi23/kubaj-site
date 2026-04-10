@@ -395,46 +395,93 @@ const parseNcz = (buffer) => {
     return points;
 };
 
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { name: 'file_proje', maxCount: 1 }]), async (req, res) => {
     const firmId = req.headers['x-firm-id'];
     const jobName = req.headers['x-job-name'] ? decodeURIComponent(req.headers['x-job-name']) : null;
     if (!firmId || !jobName) return res.status(400).send('Firma veya İş seçilmedi.');
+    if (!req.files || !req.files['file_mevcut'] || !req.files['file_proje']) {
+        return res.status(400).send('Lütfen hem Mevcut Durum hem de Proje Durumu dosyalarını yükleyiniz.');
+    }
+    
     try {
-        let points = [];
-        const ext = path.extname(req.file.originalname).toLowerCase();
-        if (ext === '.ncn') {
-            const content = fs.readFileSync(req.file.path, 'utf-8');
-            const lines = content.split('\n');
-            lines.forEach(line => {
-                const parts = line.trim().split(/\s+/);
-                if (parts.length >= 4) {
-                    points.push({
-                        id: parts[0], y: parseFloat(parts[1]), x: parseFloat(parts[2]),
-                        z_mevcut: parseFloat(parts[3]), z_proje: parseFloat(parts[4]) || 0 
-                    });
+        const parseFile = (fileObj) => {
+            let pts = [];
+            const ext = path.extname(fileObj.originalname).toLowerCase();
+            if (ext === '.ncn') {
+                const content = fs.readFileSync(fileObj.path, 'utf-8');
+                const lines = content.split('\n');
+                lines.forEach(line => {
+                    const parts = line.trim().split(/\s+/);
+                    // NCN Formati: NoktaID Y(Saga) X(Yukari) Z(Kot)
+                    if (parts.length >= 4) {
+                        pts.push({
+                            id: parts[0], y: parseFloat(parts[1]), x: parseFloat(parts[2]),
+                            z_mevcut: parseFloat(parts[3])
+                        });
+                    }
+                });
+            } else if (ext === '.ncz') {
+                const buffer = fs.readFileSync(fileObj.path);
+                pts = parseNcz(buffer); 
+            } else {
+                const workbook = xlsx.readFile(fileObj.path);
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rawPoints = xlsx.utils.sheet_to_json(sheet);
+                pts = rawPoints.map(p => mapHeaders(p));
+            }
+            return pts;
+        };
+
+        const ptsMevcut = parseFile(req.files['file_mevcut'][0]);
+        const ptsProje = parseFile(req.files['file_proje'][0]);
+        
+        let finalPoints = [];
+        
+        // Eşleştirme Algoritması: Mevcut noktalar için Proje dosyası içindeki en yakın XY koordinatlı noktayı bul
+        ptsMevcut.forEach(pm => {
+            let closest = null;
+            let minDist = Infinity;
+            
+            ptsProje.forEach(pp => {
+                const dx = pm.x - pp.x;
+                const dy = pm.y - pp.y;
+                const distSq = dx*dx + dy*dy;
+                if (distSq < minDist) {
+                    minDist = distSq;
+                    closest = pp;
                 }
             });
-        } else if (ext === '.ncz') {
-            const buffer = fs.readFileSync(req.file.path);
-            points = parseNcz(buffer);
-        } else {
-            const workbook = xlsx.readFile(req.file.path);
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rawPoints = xlsx.utils.sheet_to_json(sheet);
-            points = rawPoints.map(p => mapHeaders(p));
-        }
-        let cut = 0, fill = 0;
-        points.forEach(p => {
-            const diff = (p.z_proje || 0) - (p.z_mevcut || 0);
-            if (diff > 0) fill += diff * 25; else cut += Math.abs(diff) * 25;
+            
+            // Eğer en yakın nokta çok uzak değilse (Örn: 200 metreden yakınsa, aynı arazidir)
+            const matchedZProje = (closest && minDist < 40000) ? closest.z_mevcut : pm.z_mevcut;
+            
+            finalPoints.push({
+                id: pm.id,
+                x: pm.x,
+                y: pm.y,
+                z_mevcut: pm.z_mevcut,
+                z_proje: matchedZProje
+            });
         });
-        const kubajData = { points, results: { cutVolume: cut, fillVolume: fill, totalVolume: fill - cut } };
+
+        let cut = 0, fill = 0;
+        finalPoints.forEach(p => {
+            const diff = (p.z_proje || 0) - (p.z_mevcut || 0);
+            if (diff > 0) fill += diff * 25; else cut += Math.abs(diff) * 25; // 25m2 varsayımsal alan çarpanı
+        });
+        
+        const kubajData = { points: finalPoints, results: { cutVolume: cut, fillVolume: fill, totalVolume: fill - cut } };
         
         await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
         
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        // Temizlik
+        if (fs.existsSync(req.files['file_mevcut'][0].path)) fs.unlinkSync(req.files['file_mevcut'][0].path);
+        if (fs.existsSync(req.files['file_proje'][0].path)) fs.unlinkSync(req.files['file_proje'][0].path);
+        
         res.json(kubajData);
-    } catch (err) { res.status(500).send('Hesaplama hatası: ' + err.message); }
+    } catch (err) { 
+        res.status(500).send('Hesaplama hatası: ' + err.message); 
+    }
 });
 
 app.post('/api/kubaj', async (req, res) => {

@@ -214,7 +214,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('data');
   const [hakedisData, setHakedisData] = useState([]);
-
+  
+  // Çift Dosya (Mevcut vs Proje) Upload State'leri
+  const [mevcutFile, setMevcutFile] = useState(null);
+  const [projeFile, setProjeFile] = useState(null);
   // AUTH STATE
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('auth_token'));
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('auth_username'));
@@ -856,22 +859,30 @@ function App() {
     }
   };
 
-  const handleFileUpload = async (e) => {
+  const handleFilesUpload = async () => {
     if (!selectedFirm || !selectedProject) {
       alert("Lütfen önce bir firma ve iş (proje) seçiniz veya oluşturunuz.");
-      e.target.value = null;
       return;
     }
-    const file = e.target.files[0];
-    if (!file) return;
+    if (!mevcutFile || !projeFile) {
+      alert("Hesaplama yapabilmek için hem 'Mevcut (İlk Ölçüm)' hem de 'Proje (Sonraki Ölçüm)' dosyalarını seçmelisiniz.");
+      return;
+    }
+
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file_mevcut', mevcutFile);
+    formData.append('file_proje', projeFile);
+    
     setLoading(true);
     try {
       const resp = await axios.post(`${API_URL}/api/upload`, formData, getHeaders());
       setPoints(resp.data.points || []);
       setResults(resp.data.results || null);
       if (resp.data.points?.length > 0) setActiveTab('results');
+      
+      // Temizle
+      setMevcutFile(null);
+      setProjeFile(null);
       
       // AI Analizini tetikle
       performAIAnalysis(resp.data.points || [], resp.data.results?.totalVolume);
@@ -883,7 +894,7 @@ function App() {
         yukleniciFirma: prev.yukleniciFirma || selectedFirm?.name || ''
       }));
     } catch (error) {
-      alert('Hata: ' + (error.response?.data?.error || error.message));
+      alert('Hata: ' + (error.response?.data?.error || error.response?.data || error.message));
     } finally {
       setLoading(false);
     }
@@ -1209,12 +1220,37 @@ function App() {
 
             <main>
               {activeTab === 'data' && (
-                <section className="glass-card">
-                  <div className="upload-zone" onClick={() => document.getElementById('fileInput').click()}>
-                    <Upload size={48} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
-                    <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>{loading ? 'Analiz Ediliyor...' : 'Excel, NCN veya NCZ Yükleyin'}</h3>
-                    <p style={{ color: 'var(--text-muted)' }}>.xlsx, .xls, .ncn ve .ncz formatları desteklenir.</p>
-                    <input id="fileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={handleFileUpload} />
+                <section className="glass-card dual-upload-section">
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+                    {/* Mevcut Durum */}
+                    <div className={`upload-zone ${mevcutFile ? 'selected' : ''}`} onClick={() => document.getElementById('mevcutFileInput').click()}>
+                      <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
+                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>1. Mevcut Arazi Zemin</h3>
+                      <p style={{ color: 'var(--text-muted)' }}>Mevcut, Kazı Öncesi Ölçüm (.ncz, .ncn, .xls)</p>
+                      {mevcutFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{mevcutFile.name}</div>}
+                      <input id="mevcutFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setMevcutFile(e.target.files[0])} />
+                    </div>
+                    
+                    {/* Proje Durum */}
+                    <div className={`upload-zone ${projeFile ? 'selected' : ''}`} onClick={() => document.getElementById('projeFileInput').click()}>
+                      <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
+                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>2. Proje Arazi Zemin</h3>
+                      <p style={{ color: 'var(--text-muted)' }}>Temel veya Kazı Sonrası Ölçüm (.ncz, .ncn, .xls)</p>
+                      {projeFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{projeFile.name}</div>}
+                      <input id="projeFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setProjeFile(e.target.files[0])} />
+                    </div>
+                  </div>
+                  
+                  <div style={{ textAlign: 'center' }}>
+                    <button 
+                       className="btn" 
+                       style={{ background: 'var(--primary-color)', fontSize: '1.2rem', padding: '1rem 3rem' }} 
+                       onClick={handleFilesUpload}
+                       disabled={loading || !mevcutFile || !projeFile}
+                    >
+                      {loading ? 'Sistem İki Dosyayı Karşılaştırıyor...' : 'Mevcut ve Proje Dosyalarını Karşılaştır'}
+                    </button>
+                    {(!mevcutFile || !projeFile) && <p style={{marginTop: '1rem', color: 'var(--text-muted)'}}>Devam etmek için her iki ölçümü de yukarıdaki kutulara yüklemelisiniz.</p>}
                   </div>
                 </section>
               )}
