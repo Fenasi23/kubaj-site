@@ -871,5 +871,15 @@ app.post('/api/export/summary-pdf', async (req, res) => {
     } catch (err) { res.status(500).send('PDF Hatası: ' + err.message); }
 });
 
+// Final Error Handler
+app.use((err, req, res, next) => {
+    console.error("❌ SUNUCU HATASI:", err);
+    res.status(500).json({ 
+        error: 'Sunucu İç Hatası', 
+        message: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+});
+
 module.exports = app;
 

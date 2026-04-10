@@ -821,21 +821,22 @@ function App() {
       console.error("Firma ekleme hatasi:", error);
       let errorMsg = "Bilinmeyen bir hata oluştu";
       
-      if (error.response?.data) {
-        if (typeof error.response.data === 'string') {
-          errorMsg = error.response.data;
-        } else if (error.response.data.message) {
-          errorMsg = error.response.data.message;
-        } else if (error.response.data.error) {
-          errorMsg = error.response.data.error;
+      try {
+        if (error.response?.data) {
+          const data = error.response.data;
+          if (typeof data === 'string') {
+            errorMsg = data;
+          } else {
+            errorMsg = data.message || data.error || JSON.stringify(data);
+          }
         } else {
-          errorMsg = JSON.stringify(error.response.data);
+          errorMsg = error.message || "Bağlantı hatası";
         }
-      } else {
-        errorMsg = error.message;
+      } catch (e) {
+        errorMsg = "Hata çözümlenemedi";
       }
       
-      alert("❌ Firma eklenemedi: " + errorMsg);
+      alert(`❌ Firma eklenemedi!\n\nDetay: ${errorMsg}`);
     }
   };
 
