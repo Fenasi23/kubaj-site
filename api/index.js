@@ -11,6 +11,7 @@ const DxfParser = require('dxf-parser');
 const zlib = require('zlib');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const Delaunator = require('delaunator');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kubaj_gizli_anahtar_2024_degistirin';
 
@@ -464,11 +465,48 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             });
         });
 
+        // --- KESİN HACİM HESAPLAMASI (DELAUNAY TIN MODELİ) ---
+        // Pikselleri 25m2 varsaymak yerine, noktaları birbiriyle ağ (üçgen model) olarak örüyoruz
         let cut = 0, fill = 0;
-        finalPoints.forEach(p => {
-            const diff = (p.z_proje || 0) - (p.z_mevcut || 0);
-            if (diff > 0) fill += diff * 25; else cut += Math.abs(diff) * 25; // 25m2 varsayımsal alan çarpanı
-        });
+        
+        if (finalPoints.length >= 3) {
+            const coords = finalPoints.map(p => [p.x, p.y]);
+            const delaunay = new Delaunator(coords);
+            const triangles = delaunay.triangles;
+            
+            for (let i = 0; i < triangles.length; i += 3) {
+                const p0 = finalPoints[triangles[i]];
+                const p1 = finalPoints[triangles[i+1]];
+                const p2 = finalPoints[triangles[i+2]];
+                
+                // 2D Üçgen Alanı Hesaplama
+                const area = 0.5 * Math.abs(
+                    p0.x * (p1.y - p2.y) +
+                    p1.x * (p2.y - p0.y) +
+                    p2.x * (p0.y - p1.y)
+                );
+                
+                // Prizmanın ortalama yüksekliği (Z Farkı)
+                const diff0 = (p0.z_proje || 0) - (p0.z_mevcut || 0);
+                const diff1 = (p1.z_proje || 0) - (p1.z_mevcut || 0);
+                const diff2 = (p2.z_proje || 0) - (p2.z_mevcut || 0);
+                
+                const avgDiff = (diff0 + diff1 + diff2) / 3;
+                const polyVolume = area * avgDiff;
+                
+                if (polyVolume > 0) {
+                    fill += polyVolume;
+                } else {
+                    cut += Math.abs(polyVolume);
+                }
+            }
+        } else {
+            // Sadece 1-2 nokta varsa basit yaklaşım
+            finalPoints.forEach(p => {
+                const diff = (p.z_proje || 0) - (p.z_mevcut || 0);
+                if (diff > 0) fill += diff; else cut += Math.abs(diff);
+            });
+        }
         
         const kubajData = { points: finalPoints, results: { cutVolume: cut, fillVolume: fill, totalVolume: fill - cut } };
         
