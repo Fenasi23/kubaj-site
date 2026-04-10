@@ -106,6 +106,19 @@ const EntityRenderer = ({ entities, layers }) => {
             </group>
           );
         }
+        if (ent.type === 'trace') {
+          const pts = [];
+          ent.lines.forEach(line => {
+             pts.push(new THREE.Vector3(line[0].x, line[0].y, 0));
+             pts.push(new THREE.Vector3(line[1].x, line[1].y, 0));
+          });
+          const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+          return (
+            <lineSegments key={`ent-${idx}`} geometry={geometry}>
+              <lineBasicMaterial color={color} opacity={0.5} transparent />
+            </lineSegments>
+          );
+        }
         return null;
       })}
     </group>
@@ -412,6 +425,10 @@ const WebCAD = ({ initialEntities = [], initialLayers = [], onSave, backgroundIm
                [ent.x - s2, ent.y - s2, 0]
              ], { layerName, closed: true });
           }
+        } else if (ent.type === 'trace') {
+          ent.lines.forEach(line => {
+             dxf.addLine(line[0].x, line[0].y, 0, line[1].x, line[1].y, 0, { layerName });
+          });
         }
       });
 

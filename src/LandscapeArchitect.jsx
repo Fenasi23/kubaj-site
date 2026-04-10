@@ -2,7 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { 
   Upload, TreePine, Map as MapIcon, 
   Waves, Coffee, Baby, Dumbbell, Download, 
-  Settings2, Layers, Move, Plus, Trash2, Image as ImageIcon
+  Settings2, Layers, Move, Plus, Trash2, Image as ImageIcon,
+  Sparkles, Loader2
 } from 'lucide-react';
 import WebCAD from './WebCAD';
 
@@ -12,6 +13,73 @@ const LandscapeArchitect = () => {
   const [sidewalkWidth, setSidewalkWidth] = useState(2); // default 2m
   const [cadEntities, setCadEntities] = useState([]);
   const [activeTool, setActiveTool] = useState('none');
+  const [isTracing, setIsTracing] = useState(false);
+
+  const handleAutoTrace = () => {
+    if (!sketchImage) return alert("Önce bir eskiz yükleyin.");
+    setIsTracing(true);
+    
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        // Yeniden boyutlandır (Çok büyük resimler tarayıcıyı dondurmasın)
+        const maxWidth = 800;
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.floor(img.width * scale);
+        const h = Math.floor(img.height * scale);
+        
+        canvas.width = w;
+        canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+        
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        
+        const threshold = 130; // Siyah/Beyaz ayrım eşiği (Hassasiyet)
+        const step = 4; // Atlanacak piksel sayısı
+        
+        // Aspect ratio'ya göre CAD koordinatları (Max 200 birim)
+        const cadW = 200;
+        const cadH = cadW * (h / w);
+        
+        const lines = [];
+        for(let y = 0; y < h; y += step) {
+            for(let x = 0; x < w; x += step) {
+                const i = (y * w + x) * 4;
+                const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+                const brightness = (r + g + b) / 3;
+                
+                // Eğer piksel koyuysa ve şeffaf değilse (Çizgi)
+                if (brightness < threshold && a > 50) {
+                    const cadX = (x / w) * cadW - (cadW / 2);
+                    const cadY = -((y / h) * cadH - (cadH / 2));
+                    
+                    lines.push([
+                      { x: cadX, y: cadY },
+                      { x: cadX + 0.5, y: cadY + 0.5 }
+                    ]);
+                }
+            }
+        }
+        
+        if (lines.length > 0) {
+           setCadEntities(prev => [...prev, {
+             id: Date.now() + Math.random().toString(),
+             type: 'trace',
+             lines: lines,
+             layerId: '0',
+             color: '#facc15'
+           }]);
+        } else {
+           alert("Çizim algılanamadı. Lütfen daha belirgin hatları olan bir eskiz yükleyin.");
+        }
+        setIsTracing(false);
+    };
+    img.src = sketchImage;
+  };
 
   const handleSketchUpload = (e) => {
     const file = e.target.files[0];
@@ -56,6 +124,17 @@ const LandscapeArchitect = () => {
             <span>{sketchImage ? 'Eskiz Değiştir' : 'El Çizimi (Resim 1)'}</span>
             <input id="sketchInput" type="file" accept="image/*" hidden onChange={handleSketchUpload} />
           </div>
+          {sketchImage && (
+            <button 
+              className="btn btn-secondary" 
+              style={{ width: '100%', marginTop: '0.75rem', display: 'flex', justifyContent: 'center', gap: '0.5rem', background: 'rgba(250, 204, 21, 0.1)', color: '#facc15', border: '1px solid #facc15' }}
+              onClick={handleAutoTrace}
+              disabled={isTracing}
+            >
+              {isTracing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+              {isTracing ? 'İşleniyor...' : 'Otomatik Çizime Çevir'}
+            </button>
+          )}
         </section>
 
         <section className="sidebar-section">
