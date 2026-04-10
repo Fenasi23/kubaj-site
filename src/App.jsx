@@ -12,7 +12,7 @@ import {
   FileText, Download, LayoutDashboard, Settings, 
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
   LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory, Sparkles, TrendingDown, TrendingUp, AlertCircle, Camera, Image as ImageIcon,
-  Pencil as PencilIcon, Minus as MinusIcon, TreePine, User, Search, Bell, Zap, Calendar, FileCheck, Building2
+  Pencil as PencilIcon, Minus as MinusIcon, TreePine, User, Search, Bell, Zap, Calendar, FileCheck, Building2, RefreshCw, Plus, PlusSquare
 } from 'lucide-react';
 import WebCAD from './WebCAD';
 import LandscapeArchitect from './LandscapeArchitect';
