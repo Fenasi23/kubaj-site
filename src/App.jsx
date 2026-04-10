@@ -46,15 +46,7 @@ function FlyToLocation({ lat, lng }) {
   }, [lat, lng, map]);
   return null;
 }
-
-extend({ OrbitControls });
-
-function MapControls() {
-  const { camera, gl } = useThree();
-  const controlsRef = useRef();
-  useFrame(() => controlsRef.current && controlsRef.current.update());
-  return <orbitControls ref={controlsRef} args={[camera, gl.domElement]} enableDamping={true} />;
-}
+// Removed extend and custom MapControls to prevent R3F catalog corruption
 
 // AI Assistant Insights Card Component
 function AIAssistantCard({ insights }) {
@@ -1321,7 +1313,7 @@ function App() {
                     <h3 style={{ marginBottom: '1rem' }}>Hızlı 3D Arazi Modeli</h3>
                     <div style={{ height: '400px', background: '#0a0a0a', borderRadius: '12px' }}>
                       <Canvas camera={{ position: [20, 20, 20], fov: 45 }}>
-                        <MapControls />
+                        <OrbitControls enableDamping={true} />
                         <Terrain3D points={points} />
                       </Canvas>
                     </div>
@@ -1359,7 +1351,7 @@ function App() {
                   </div>
 
                   <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
-                    <MapControls />
+                    <OrbitControls enableDamping={true} />
                     <Terrain3D 
                       points={points} 
                       isProfileMode={isProfileMode}
