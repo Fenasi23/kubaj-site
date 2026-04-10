@@ -834,17 +834,48 @@ function App() {
           const data = error.response.data;
           if (typeof data === 'string') {
             errorMsg = data;
-          } else {
+          } else if (data && typeof data === 'object') {
             errorMsg = data.message || data.error || JSON.stringify(data);
           }
         } else {
           errorMsg = error.message || "Bağlantı hatası";
         }
       } catch (e) {
-        errorMsg = "Hata çözümlenemedi";
+        errorMsg = "Hata detayı alınamadı";
       }
       
       alert(`❌ Firma eklenemedi!\n\nDetay: ${errorMsg}`);
+    }
+  };
+
+  const handleAddProject = async (firmId) => {
+    const jobName = prompt("Yeni iş (proje) adı giriniz:");
+    if (!jobName) return;
+    try {
+      // Proje oluşturmak için boş bir kübaj verisiyle kaydediyoruz
+      await axios.post(`${API_URL}/api/kubaj`, { points: [], results: null }, {
+        headers: {
+          'x-firm-id': firmId,
+          'x-job-name': encodeURIComponent(jobName)
+        }
+      });
+      const r = await axios.get(`${API_URL}/api/firms/${firmId}/projects`);
+      setProjects(r.data);
+      setSelectedProject(jobName);
+    } catch (error) {
+      alert("İş oluşturulamadı.");
+    }
+  };
+
+  const handleDeleteProject = async (firmId, jobName) => {
+    if (!confirm(`'${jobName}' işine ait tüm veriler silinecek. Emin misiniz?`)) return;
+    try {
+      await axios.delete(`${API_URL}/api/projects/${firmId}/${encodeURIComponent(jobName)}`);
+      const r = await axios.get(`${API_URL}/api/firms/${firmId}/projects`);
+      setProjects(r.data);
+      if (selectedProject === jobName) setSelectedProject('');
+    } catch (error) {
+      alert("İş silinemedi.");
     }
   };
 

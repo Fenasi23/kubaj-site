@@ -230,6 +230,7 @@ app.delete('/api/firms/:id', async (req, res) => {
         await Firm.findByIdAndDelete(req.params.id);
         await Project.deleteMany({ firmId: req.params.id });
         res.json({ message: 'Firma silindi.' });
+    } catch (err) { res.status(500).send('Silme hatası.'); }
 });
 
 app.get('/api/projects/all', async (req, res) => {
@@ -247,6 +248,20 @@ app.get('/api/projects/all', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: 'Projeler yüklenemedi: ' + err.message });
     }
+});
+
+app.get('/api/projects/:firmId/:jobName', async (req, res) => {
+    try {
+        const project = await Project.findOne({ firmId: req.params.firmId, jobName: decodeURIComponent(req.params.jobName) });
+        res.json(project);
+    } catch (err) { res.status(500).send('Proje bulunamadı.'); }
+});
+
+app.delete('/api/projects/:firmId/:jobName', async (req, res) => {
+    try {
+        await Project.findOneAndDelete({ firmId: req.params.firmId, jobName: decodeURIComponent(req.params.jobName) });
+        res.json({ message: 'Proje silindi.' });
+    } catch (err) { res.status(500).send('Silme hatası.'); }
 });
 
 app.get('/api/firms/:id/projects', async (req, res) => {
