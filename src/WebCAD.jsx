@@ -405,7 +405,7 @@ const WebCAD = ({ initialEntities = [], initialLayers = [], onSave, backgroundIm
           for (let i = 0; i < ent.points.length - 1; i++) {
             const p1 = ent.points[i];
             const p2 = ent.points[i+1];
-            dxf.addLine(p1.x, p1.y, 0, p2.x, p2.y, 0, { layerName });
+            dxf.addLine({ x: p1.x, y: p1.y, z: 0 }, { x: p2.x, y: p2.y, z: 0 }, { layerName });
           }
         } else if (ent.type === 'landscape') {
           // Peyzaj objelerini DXF'e dikdörtgen veya daire olarak aktar
@@ -427,7 +427,7 @@ const WebCAD = ({ initialEntities = [], initialLayers = [], onSave, backgroundIm
           }
         } else if (ent.type === 'trace') {
           ent.lines.forEach(line => {
-             dxf.addLine(line[0].x, line[0].y, 0, line[1].x, line[1].y, 0, { layerName });
+             dxf.addLine({ x: line[0].x, y: line[0].y, z: 0 }, { x: line[1].x, y: line[1].y, z: 0 }, { layerName });
           });
         }
       });
