@@ -38,7 +38,6 @@ const LandscapeArchitect = () => {
         const imageData = ctx.getImageData(0, 0, w, h);
         const data = imageData.data;
         
-        const threshold = 210; // Daha hassas: Hafif kalem izlerini de yakalar
         const step = 3; // Çözünürlüğü biraz artırdık
         
         // Aspect ratio'ya göre CAD koordinatları
@@ -46,23 +45,29 @@ const LandscapeArchitect = () => {
         const cadH = cadW * (h / w);
         
         const lines = [];
-        for(let y = 0; y < h; y += step) {
-            for(let x = 0; x < w; x += step) {
+        // Edge detection (Kenar bulma) algoritması
+        for(let y = step; y < h - step; y += step) {
+            for(let x = step; x < w - step; x += step) {
                 const i = (y * w + x) * 4;
-                const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
-                // Siyah/beyaz dönüşümü
-                const brightness = (0.299*r + 0.587*g + 0.114*b); 
+                const lum = (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
                 
-                // Eğer piksel kağıt beyazından koyuysa (Kalem iziyse)
-                if (brightness < threshold && a > 50) {
+                const iRight = (y * w + (x + step)) * 4;
+                const lumRight = (0.299*data[iRight] + 0.587*data[iRight+1] + 0.114*data[iRight+2]);
+                
+                const iBottom = ((y + step) * w + x) * 4;
+                const lumBottom = (0.299*data[iBottom] + 0.587*data[iBottom+1] + 0.114*data[iBottom+2]);
+                
+                const edgeMagnitude = Math.abs(lum - lumRight) + Math.abs(lum - lumBottom);
+                
+                // Eğer piksel çevresine göre kontrast yaratıyorsa (Yani bir kalem çizgisi geçiyorsa)
+                if (edgeMagnitude > 25) {
                     const cadX = (x / w) * cadW - (cadW / 2);
                     const cadY = -((y / h) * cadH - (cadH / 2));
-                    
-                    // Daha belirgin ve uzun cizgiler
                     const segmentWidth = (cadW / w) * step * 1.5;
+                    
                     lines.push([
-                      { x: cadX, y: cadY },
-                      { x: cadX + segmentWidth, y: cadY } // Yatay kısa çizgiler
+                      { x: Number(cadX.toFixed(3)), y: Number(cadY.toFixed(3)) },
+                      { x: Number((cadX + segmentWidth).toFixed(3)), y: Number(cadY.toFixed(3)) }
                     ]);
                 }
             }
