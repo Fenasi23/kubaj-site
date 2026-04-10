@@ -720,13 +720,21 @@ function App() {
   }, [selectedFirm, API_URL]);
 
   // Arşiv Projelerini Yükle
-  React.useEffect(() => {
-    if (activeModule === 'archive') {
-      axios.get(`${API_URL}/api/projects/all`).then(r => {
-        setArchiveProjects(r.data);
-      });
+  const fetchArchiveProjects = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API_URL}/api/projects/all`);
+      setArchiveProjects(r.data);
+    } catch (e) {
+      console.error('Arşiv projeleri çekilemedi', e);
+      // Fail silently for dashboard, but we might want an alert if activeModule is archive
     }
-  }, [activeModule, API_URL]);
+  }, [API_URL]);
+
+  React.useEffect(() => {
+    if (activeModule === 'archive' || activeModule === 'dashboard') {
+      fetchArchiveProjects();
+    }
+  }, [activeModule, fetchArchiveProjects]);
 
   // Hakediş Bilgilerini Seçimle Senkronize Et (Otomatik Doldurma)
   React.useEffect(() => {
@@ -2446,6 +2454,86 @@ function App() {
                   </Marker>
                 ))}
               </MapContainer>
+            </main>
+          </div>
+        );
+      case 'archive':
+        return (
+          <div className="module-container anim-fade-in">
+            <header className="module-header">
+              <div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>İş Takip Paneli (Arşiv)</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Tüm firmalara ait kayıtlı projeler ve analiz sonuçları</p>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <div className="search-box" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)', borderRadius: '10px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Search size={16} color="var(--text-muted)" />
+                  <input 
+                    type="text" 
+                    placeholder="Arşivde ara..." 
+                    value={archiveSearch}
+                    onChange={(e) => setArchiveSearch(e.target.value)}
+                    style={{ background: 'transparent', border: 'none', color: 'white', outline: 'none', fontSize: '0.85rem' }} 
+                  />
+                </div>
+                <button onClick={fetchArchiveProjects} className="btn btn-secondary">
+                   <RefreshCw size={18} /> Yenile
+                </button>
+              </div>
+            </header>
+
+            <main className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--glass-border)' }}>
+                      <th style={{ padding: '15px', textAlign: 'left', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Firma Adı</th>
+                      <th style={{ padding: '15px', textAlign: 'left', color: 'var(--text-muted)', fontSize: '0.8rem' }}>İş / Proje Adı</th>
+                      <th style={{ padding: '15px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Son İşlem</th>
+                      <th style={{ padding: '15px', textAlign: 'right', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Hacim (m³)</th>
+                      <th style={{ padding: '15px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {archiveProjects
+                      .filter(p => !archiveSearch || p.jobName?.toLowerCase().includes(archiveSearch.toLowerCase()) || p.firmName?.toLowerCase().includes(archiveSearch.toLowerCase()))
+                      .map((p, i) => (
+                      <tr key={p._id || i} style={{ borderBottom: '1px solid var(--glass-border)', transition: 'background 0.2s' }} className="table-row-hover">
+                        <td style={{ padding: '15px', fontWeight: 700, color: 'var(--primary-color)' }}>{p.firmName}</td>
+                        <td style={{ padding: '15px', fontWeight: 600 }}>{p.jobName}</td>
+                        <td style={{ padding: '15px', textAlign: 'center', fontSize: '0.85rem' }}>{new Date(p.updatedAt).toLocaleDateString('tr-TR')}</td>
+                        <td style={{ padding: '15px', textAlign: 'right', fontWeight: 800 }}>
+                          {p.kubaj?.totalVolume ? `${p.kubaj.totalVolume.toLocaleString('tr-TR')} m³` : '-'}
+                        </td>
+                        <td style={{ padding: '15px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                            <button 
+                              className="btn-icon-small" 
+                              style={{ color: 'var(--primary-color)' }}
+                              onClick={() => {
+                                const firm = firms.find(f => f.id === p.firmId || f._id === p.firmId);
+                                if (firm) setSelectedFirm(firm);
+                                setSelectedProject(p.jobName);
+                                setActiveModule('kubaj');
+                              }}
+                            >
+                              <ChevronRight size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {archiveProjects.length === 0 && (
+                      <tr>
+                        <td colSpan="5" style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                          <LayoutDashboard size={48} style={{ opacity: 0.1, marginBottom: '1rem' }} />
+                          <p>Arşivde henüz kayıtlı proje bulunmuyor.</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </main>
           </div>
         );
