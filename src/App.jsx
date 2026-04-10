@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { Line, Doughnut } from 'react-chartjs-2';
+import {
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip as ChartTooltip, Legend, ArcElement,
+} from 'chart.js';
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, ChartTooltip, Legend);
+
 import { 
   Upload, Map as MapIcon, BarChart3, Table as TableIcon, 
   FileText, Download, LayoutDashboard, Settings, 
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
-  Plus, PlusSquare, Building2, FileCheck, RefreshCw,
   LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory, Sparkles, TrendingDown, TrendingUp, AlertCircle, Camera, Image as ImageIcon,
-  Pencil as PencilIcon, Minus as MinusIcon, TreePine
+  Pencil as PencilIcon, Minus as MinusIcon, TreePine, User, Search, Bell, Zap, Calendar
 } from 'lucide-react';
 import WebCAD from './WebCAD';
 import LandscapeArchitect from './LandscapeArchitect';
@@ -205,7 +211,7 @@ function App() {
   const API_URL = "";
   console.log("🔄 PORTAL: Uygulama başlatılıyor. API Adresi:", window.location.origin + "/api");
 
-  const [activeModule, setActiveModule] = useState('kubaj');
+  const [activeModule, setActiveModule] = useState('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState(false); // To keep my future layout changes happy
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1159,9 +1165,131 @@ function App() {
     console.warn("⚠️ AUTH HATASI:", loginError);
   }
 
+  const renderDashboard = () => {
+    const stats = [
+      { id: 'total', label: 'Toplam Proje', value: archiveProjects.length, trend: `+${archiveProjects.length > 0 ? 1 : 0} bu ay`, icon: <LayoutDashboard size={24} />, type: 'active' },
+      { id: 'active', label: 'Aktif Analiz', value: firms.length, trend: `+${firms.length > 0 ? 1 : 0} bu hafta`, icon: <Zap size={24} />, type: 'warning' },
+      { id: 'done', label: 'Tamamlanan', value: archiveProjects.filter(p => (p.kubaj?.totalVolume || 0) !== 0).length, trend: '+0 bu ay', icon: <FileCheck size={24} />, type: 'success' },
+      { id: 'waiting', label: 'Bekleyen', value: 0, trend: '0 bu hafta', icon: <Calendar size={24} />, type: 'active' },
+    ];
+
+    const chartData = {
+      labels: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+      datasets: [
+        {
+          label: 'Analiz',
+          data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, archiveProjects.length],
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.2)',
+          tension: 0.4,
+          fill: true,
+        },
+        {
+          label: 'Tamamlanan',
+          data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, archiveProjects.filter(p => (p.kubaj?.totalVolume || 0) !== 0).length],
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.2)',
+          tension: 0.4,
+          fill: true,
+        }
+      ]
+    };
+
+    const donutData = {
+      labels: ['Kubaj Analizi', 'Diğer'],
+      datasets: [{
+        data: [archiveProjects.length, 0],
+        backgroundColor: ['#6366f1', '#94a3b8'],
+        borderWidth: 0,
+        hoverOffset: 10
+      }]
+    };
+
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+        x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+      }
+    };
+
+    return (
+      <div className="anim-fade-in" style={{ paddingBottom: '2rem' }}>
+        <header style={{ marginBottom: '2rem' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Web Portal Dashboard</h2>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+            Ana Sayfa <ChevronRight size={12} /> Modüller <ChevronRight size={12} /> <span style={{color: 'var(--primary-color)'}}>Dashboard</span>
+          </div>
+        </header>
+
+        <div className="stats-grid">
+          {stats.map(s => (
+            <div key={s.id} className={`stat-card ${s.type}`}>
+              <div className="stat-icon-box">{s.icon}</div>
+              <div className="stat-info">
+                <div className="value">{s.value}</div>
+                <div className="label">{s.label}</div>
+                <div className={`stat-trend ${s.id === 'waiting' ? 'down' : 'up'}`}>{s.trend}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+          <div className="glass-card" style={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>Aylık Analiz Trendi</h3>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <Line data={chartData} options={chartOptions} />
+            </div>
+          </div>
+          <div className="glass-card" style={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>Sistem Kullanım Dağılımı</h3>
+            <div style={{ flex: 1, position: 'relative', padding: '1rem' }}>
+              <Doughnut data={donutData} options={{...chartOptions, cutout: '70%'}} />
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-card">
+          <h3 style={{ marginBottom: '1.5rem' }}>Son Aktiviteler</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--glass-border)', textAlign: 'left' }}>
+                <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Proje Adı</th>
+                <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Modül</th>
+                <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Tarih</th>
+                <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Durum</th>
+              </tr>
+            </thead>
+            <tbody>
+              {archiveProjects.slice(0, 5).map((p, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <td style={{ padding: '16px 12px', fontWeight: 600 }}>{p.jobName}</td>
+                  <td style={{ padding: '16px 12px' }}>Kubaj Analizi</td>
+                  <td style={{ padding: '16px 12px' }}>{new Date(p.updatedAt).toLocaleDateString('tr-TR')}</td>
+                  <td style={{ padding: '16px 12px' }}>
+                    <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>Tamamlandı</span>
+                  </td>
+                </tr>
+              ))}
+              {archiveProjects.length === 0 && (
+                <tr>
+                  <td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Henüz bir aktivite bulunmuyor.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   const renderContent = () => {
     try {
-    switch (activeModule) {
+      if (activeModule === 'dashboard') return renderDashboard();
+      switch (activeModule) {
       case 'kubaj':
         return (
           <div className="module-container anim-fade-in">
@@ -2391,177 +2519,143 @@ function App() {
     <div className="dashboard-container">
       <div className="mesh-bg"></div>
 
-      {/* OFF-CANVAS OVERLAY */}
-      <div
-        onClick={() => setIsMenuOpen(false)}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 200,
-          background: 'rgba(0,0,0,0.55)',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
-          opacity: isMenuOpen ? 1 : 0,
-          pointerEvents: isMenuOpen ? 'all' : 'none',
-          transition: 'opacity 0.3s ease',
-        }}
-      />
+      {/* Sidebar Overlay for Mobile */}
+      <div className={`sidebar-overlay ${mobileMenuOpen ? 'open' : ''}`} onClick={() => setMobileMenuOpen(false)}></div>
 
-      {/* OFF-CANVAS DRAWER */}
-      <aside style={{
-        position: 'fixed', top: 0, left: 0, height: '100vh',
-        width: '300px', zIndex: 201,
-        background: 'rgba(2,6,23,0.97)',
-        borderRight: '1px solid rgba(255,255,255,0.08)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        display: 'flex', flexDirection: 'column',
-        transform: isMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.32s cubic-bezier(0.16,1,0.3,1)',
-        boxShadow: isMenuOpen ? '20px 0 60px rgba(0,0,0,0.6)' : 'none',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.5rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', padding: '8px', borderRadius: '10px', boxShadow: '0 6px 16px rgba(99,102,241,0.4)' }}>
-              <MapIcon size={20} color="white" />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff', letterSpacing: '-0.3px' }}>Harita Portalı</div>
-              <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Muhammed BİLİCİ</div>
-            </div>
+      <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`} style={{ left: mobileMenuOpen ? '0' : (isSidebarCollapsed ? '-270px' : '0'), position: 'relative', transition: 'all 0.3s ease' }}>
+        <div className="sidebar-header" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--glass-border)' }}>
+          <div style={{ width: '32px', height: '32px', background: 'var(--primary-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <HardHat size={20} color="white" />
           </div>
-          <button onClick={() => setIsMenuOpen(false)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '6px', color: '#94a3b8', cursor: 'pointer', display: 'flex' }}>
-            <X size={18} />
-          </button>
+          <div>
+            <h1 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Harita Portalı</h1>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>GIS Dashboard</div>
+          </div>
         </div>
 
-        <div style={{ margin: '1rem 1rem 0', padding: '0.75rem 1rem', borderRadius: '12px', background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(79,70,229,0.05))', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg,#6366f1,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(99,102,241,0.3)', flexShrink: 0 }}>
-            <CircleUser size={18} color="white" />
+        <div className="sidebar-profile">
+          <div className="profile-card">
+            <div className="avatar">
+              <User size={20} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentUser || 'Kullanıcı'}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{currentRole === 'admin' ? 'ADMIN' : 'MÜHENDİS'}</div>
+            </div>
+            <button onClick={handleLogout} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
+              <LogOut size={16} />
+            </button>
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentUser}</div>
-            <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{currentRole}</div>
-          </div>
-          <button onClick={handleLogout} title="Çıkış Yap" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '6px', color: '#ef4444', cursor: 'pointer', display: 'flex' }}>
-            <LogOut size={15} />
-          </button>
         </div>
 
-        <div style={{ padding: '1.25rem 1.5rem 0.5rem', fontSize: '0.65rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Modüller</div>
+        <div className="sidebar-menu" style={{ flex: 1, overflowY: 'auto', padding: '1rem 0' }}>
+          <div style={{ padding: '0 1.5rem 0.5rem', fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Modüller</div>
+          
+          <div onClick={() => { setActiveModule('dashboard'); setMobileMenuOpen(false); }} className={`nav-item ${activeModule === 'dashboard' ? 'active' : ''}`}>
+             <LayoutDashboard size={18} /> Dashboard
+          </div>
 
-        <nav style={{ flex: 1, overflowY: 'auto', padding: '0 0.75rem' }}>
-          {navigationItems.map(item => {
-            const isActive = activeModule === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => { setActiveModule(item.id); setIsMenuOpen(false); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '12px',
-                  width: '100%', padding: '0.75rem 1rem', marginBottom: '2px',
-                  borderRadius: '10px', textAlign: 'left', cursor: 'pointer',
-                  background: isActive ? 'linear-gradient(90deg,rgba(99,102,241,0.2),rgba(99,102,241,0.05))' : 'transparent',
-                  border: 'none',
-                  borderLeft: isActive ? '3px solid #6366f1' : '3px solid transparent',
-                  color: isActive ? '#818cf8' : '#94a3b8',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <span style={{ opacity: isActive ? 1 : 0.7 }}>{item.icon}</span>
-                <span style={{ fontSize: '0.9rem', fontWeight: isActive ? 700 : 500 }}>{item.label}</span>
-                {isActive && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.5 }} />}
-              </button>
-            );
-          })}
-        </nav>
+          {navigationItems.map(item => (
+            <div key={item.id} onClick={() => { setActiveModule(item.id); setMobileMenuOpen(false); }} className={`nav-item ${activeModule === item.id ? 'active' : ''}`}>
+              {item.icon} {item.label}
+            </div>
+          ))}
+          
+          {currentRole === 'admin' && (
+            <div onClick={() => { setActiveModule('admin'); setMobileMenuOpen(false); }} className={`nav-item ${activeModule === 'admin' ? 'active' : ''}`}>
+              <HardHat size={18} /> Admin Paneli
+            </div>
+          )}
+        </div>
 
-        <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
+        <div style={{ padding: '1.5rem', borderTop: '1px solid var(--glass-border)', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center' }}>
           © 2024 Muhammed BİLİCİ
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', overflow: 'hidden' }}>
-
-        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.5rem', background: 'rgba(2,6,23,0.8)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 30px rgba(0,0,0,0.3)', position: 'sticky', top: 0, zIndex: 100, flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <button
-              onClick={() => setIsMenuOpen(true)}
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '9px 10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', transition: 'all 0.2s' }}
-              onMouseEnter={e => { e.currentTarget.style.background='rgba(99,102,241,0.15)'; e.currentTarget.style.borderColor='rgba(99,102,241,0.3)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'; }}
-            >
-              <span style={{ display:'block', width:'18px', height:'2px', background:'#fff', borderRadius:'2px' }} />
-              <span style={{ display:'block', width:'13px', height:'2px', background:'#94a3b8', borderRadius:'2px' }} />
-              <span style={{ display:'block', width:'18px', height:'2px', background:'#fff', borderRadius:'2px' }} />
-            </button>
-            <div>
-              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>
-                {navigationItems.find(n => n.id === activeModule)?.label || 'Harita Çözümleri'}
-              </div>
-              <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>Muhammed BİLİCİ</div>
+      <div className="main-content">
+        <header className="top-app-bar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+             <div className="search-box" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)', borderRadius: '10px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px', minWidth: '350px' }}>
+              <Search size={18} color="var(--text-muted)" />
+              <input type="text" placeholder="Proje veya veri ara..." style={{ background: 'transparent', border: 'none', color: 'white', outline: 'none', width: '100%', fontSize: '0.9rem' }} />
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'6px', background:'rgba(255,255,255,0.04)', padding:'5px 10px', borderRadius:'8px', border:'1px solid rgba(255,255,255,0.07)' }}>
-              <Building2 size={14} color="#6366f1" />
-              <select className="top-select" value={selectedFirm?.id || ''} onChange={(e) => { const firm = firms.find(f => f.id === e.target.value); setSelectedFirm(firm); setSelectedProject(''); }} style={{ background:'none', border:'none', color:'#fff', fontSize:'0.82rem', fontWeight:600, outline:'none', cursor:'pointer', maxWidth:'120px' }}>
-                <option value="" disabled style={{ background:'#0f172a' }}>Firma...</option>
-                {firms.map(f => <option key={f.id} value={f.id} style={{ background:'#0f172a' }}>{f.name}</option>)}
-              </select>
-              <button onClick={() => setShowAddFirm(!showAddFirm)} title="Firma Ekle" style={{ background:'none', border:'none', padding:'2px', cursor:'pointer', color:'#6366f1', display:'flex' }}><Plus size={14} /></button>
-              {selectedFirm && (
-                <button
-                  onClick={() => handleDeleteFirm(selectedFirm.id)}
-                  title="Seçili Firmayı Sil"
-                  style={{ background:'none', border:'none', padding:'2px', cursor:'pointer', color:'#ef4444', display:'flex' }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <button style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Bell size={20} /></button>
+              <button style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Settings size={20} /></button>
+            </div>
+            
+            <div style={{ height: '24px', width: '1px', background: 'var(--glass-border)' }}></div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="firm-selector" style={{ background: 'rgba(59, 130, 246, 0.05)', borderRadius: '10px', padding: '2px 10px', border: '1px solid rgba(59, 130, 246, 0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <select 
+                  className="top-select"
+                  value={selectedFirm?.id || ''} 
+                  onChange={(e) => {
+                    const f = firms.find(f => f.id === e.target.value);
+                    setSelectedFirm(f);
+                    localStorage.setItem('selectedFirmId', e.target.value);
+                  }}
                 >
-                  <Trash2 size={14} />
-                </button>
+                  <option value="">Firma Seçin</option>
+                  {firms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+                <button onClick={() => setShowAddFirm(true)} className="btn-icon-small" style={{ color: 'var(--primary-color)', background: 'transparent', border: 'none' }}><Plus size={16} /></button>
+                {selectedFirm && (
+                  <button onClick={() => handleDeleteFirm(selectedFirm.id)} style={{ color: '#ef4444', background: 'transparent', border: 'none' }}><Trash2 size={16} /></button>
+                )}
+              </div>
+
+              {selectedFirm && (
+                <div className="project-selector" style={{ background: 'rgba(16, 185, 129, 0.05)', borderRadius: '10px', padding: '2px 10px', border: '1px solid rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <select 
+                    className="top-select"
+                    value={selectedProject} 
+                    onChange={(e) => setSelectedProject(e.target.value)}
+                  >
+                    <option value="">İş Seçin</option>
+                    {projects.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <button onClick={() => handleAddProject(selectedFirm.id)} className="btn-icon-small" style={{ color: 'var(--accent-color)', background: 'transparent', border: 'none' }}><Plus size={16} /></button>
+                  {selectedProject && (
+                    <button onClick={() => handleDeleteProject(selectedFirm.id, selectedProject)} style={{ color: '#ef4444', background: 'transparent', border: 'none' }}><Trash2 size={16} /></button>
+                  )}
+                </div>
               )}
             </div>
-
-            <div style={{ display:'flex', alignItems:'center', gap:'6px', background:'rgba(255,255,255,0.04)', padding:'5px 10px', borderRadius:'8px', border:'1px solid rgba(255,255,255,0.07)' }}>
-              <FileCheck size={14} color="#0d9488" />
-              <select className="top-select" value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} disabled={!selectedFirm} style={{ background:'none', border:'none', color: selectedProject ? '#0d9488':'#fff', fontSize:'0.82rem', fontWeight:600, outline:'none', cursor:'pointer', maxWidth:'120px', opacity: !selectedFirm ? 0.4 : 1 }}>
-                <option value="" disabled style={{ background:'#0f172a' }}>İş...</option>
-                {projects.map(p => <option key={p} value={p} style={{ background:'#0f172a' }}>{p}</option>)}
-              </select>
-              <button onClick={() => selectedFirm && handleAddProject(selectedFirm.id)} disabled={!selectedFirm} style={{ background:'none', border:'none', padding:'2px', cursor:'pointer', color:'#0d9488', display:'flex', opacity: !selectedFirm ? 0.4 : 1 }}><Plus size={14} /></button>
-            </div>
-
-            {selectedProject && (
-              <button onClick={() => handleDeleteProject(selectedFirm.id, selectedProject)} title="Seçili İşi Sil" style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:'8px', padding:'7px', color:'#ef4444', cursor:'pointer', display:'flex' }}>
-                <Trash2 size={15} />
-              </button>
-            )}
-            {selectedFirm && (
-              <button onClick={() => handleBackupFirm(selectedFirm.id, selectedFirm.name)} title="Yedek Al" style={{ background:'rgba(99,102,241,0.1)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:'8px', padding:'7px', color:'#6366f1', cursor:'pointer', display:'flex' }}>
-                <Download size={15} />
-              </button>
-            )}
           </div>
         </header>
-
-        {showAddFirm && (
-          <div className="anim-scale-in" style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)' }}>
-            <div className="glass-card" style={{ width:'400px' }}>
-              <h3 style={{ marginBottom:'1.5rem' }}>Yeni Firma Ekle</h3>
-              <input type="text" placeholder="Firma Adı..." className="table-input" value={newFirmName} onChange={e => setNewFirmName(e.target.value)} style={{ marginBottom:'1.5rem' }} autoFocus />
-              <div style={{ display:'flex', gap:'1rem' }}>
-                <button onClick={() => setShowAddFirm(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>İptal</button>
-                <button onClick={handleAddFirm} className="btn" style={{ flex:1, justifyContent:'center' }}>Ekle</button>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div style={{ flex: 1, overflow: 'auto', padding: '2rem' }}>
           {renderContent()}
         </div>
       </div>
+
+      {showAddFirm && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
+          <div className="glass-card anim-scale-in" style={{ width: '400px' }}>
+            <h3 style={{ marginBottom: '1.5rem' }}>Yeni Firma Ekle</h3>
+            <input 
+              type="text" 
+              className="table-input" 
+              placeholder="Firma adını giriniz..." 
+              value={newFirmName} 
+              onChange={e => setNewFirmName(e.target.value)}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem' }}>
+              <button className="btn btn-secondary" onClick={() => setShowAddFirm(false)} style={{ flex: 1 }}>İptal</button>
+              <button className="btn" onClick={handleAddFirm} style={{ flex: 1 }}>Firma Oluştur</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+};
 
 export default App;

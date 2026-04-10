@@ -1,37 +1,39 @@
 :root {
-  /* Core Colors - Modern Slate & Indigo/Teal Theme */
-  --primary-color: #6366f1;      /* Indigo 500 */
-  --primary-hover: #4f46e5;      /* Indigo 600 */
-  --primary-glow: rgba(99, 102, 241, 0.4);
+  /* Premium Slate & Blue Theme */
+  --primary-color: #3b82f6;      /* Blue 500 */
+  --primary-hover: #2563eb;      /* Blue 600 */
+  --primary-glow: rgba(59, 130, 246, 0.4);
   
-  --bg-darker: #020617;          /* Slate 950 */
-  --bg-color: #0f172a;           /* Slate 900 */
-  --sidebar-bg: rgba(2, 6, 23, 0.95);
+  --bg-darker: #0b0f17;          /* Near black */
+  --bg-color: #111827;           /* Slate 900 */
+  --sidebar-bg: #0b0f17;
   
-  --card-bg: rgba(30, 41, 59, 0.5); /* Slate 800 */
+  --card-bg: #111827;
+  --glass-card-bg: rgba(17, 24, 39, 0.7);
   
-  --text-color: #f8fafc;
-  --text-muted: #94a3b8;
+  --text-color: #f3f4f6;
+  --text-muted: #9ca3af;
   
-  --accent-color: #0d9488;       /* Teal 600 */
-  --accent-hover: #0f766e;
+  --accent-color: #10b981;       /* Emerald 500 */
+  --accent-hover: #059669;
+  
   --error-color: #ef4444;
   --warning-color: #f59e0b;
   
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-bright: rgba(255, 255, 255, 0.15);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --glass-border-bright: rgba(255, 255, 255, 0.1);
   
-  --sidebar-width: 280px;
-  --transition-speed: 0.3s;
-  --border-radius-lg: 16px;
-  --border-radius-md: 12px;
+  --sidebar-width: 270px;
+  --transition-speed: 0.25s;
+  --border-radius-lg: 20px;
+  --border-radius-md: 14px;
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -40,18 +42,95 @@ body {
   color: var(--text-color);
   min-height: 100vh;
   overflow: hidden;
-  letter-spacing: -0.01em;
 }
 
-/* Dynamic Minimal Background */
-.mesh-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: 
-    radial-gradient(circle at 10% 10%, rgba(245, 158, 11, 0.05) 0%, transparent 40%),
-    radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.03) 0%, transparent 40%),
-    var(--bg-darker);
+/* Dashboard Home & Stat Cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--glass-border);
+  padding: 1.75rem;
+  border-radius: var(--border-radius-lg);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--primary-color);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+}
+
+.stat-icon-box {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  background: rgba(59, 130, 246, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-color);
+}
+
+.stat-card.active .stat-icon-box { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.stat-card.success .stat-icon-box { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.stat-card.warning .stat-icon-box { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+
+.stat-info .value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  margin-bottom: 0.2rem;
+}
+
+.stat-info .label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.stat-trend {
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-top: 0.5rem;
+}
+.stat-trend.up { color: var(--accent-color); }
+.stat-trend.down { color: var(--error-color); }
+
+/* Sidebar Profile Section */
+.sidebar-profile {
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(255,255,255,0.03);
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  background: var(--primary-color);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
 }
 
 /* Scrollbar Styles */

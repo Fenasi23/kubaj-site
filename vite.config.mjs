@@ -68,7 +68,7 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       'react', 'react-dom', 'three', '@react-three/fiber', '@react-three/drei', 
-      'leaflet', 'react-leaflet', 'axios', 'lucide-react'
+      'leaflet', 'react-leaflet', 'axios', 'lucide-react', 'chart.js', 'react-chartjs-2'
     ]
   },
   build: {
