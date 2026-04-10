@@ -174,11 +174,11 @@ const GuideContent = () => (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
             <div style={{ fontWeight: 800, marginBottom: '5px' }}>Android (Chrome)</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>"⋮" -> "Uygulamayı YÜKLE"</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>"⋮" -&gt; "Uygulamayı YÜKLE"</div>
           </div>
           <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
             <div style={{ fontWeight: 800, marginBottom: '5px' }}>iPhone (Safari)</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>"↑" -> "Ana Ekrana EKLE"</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>"↑" -&gt; "Ana Ekrana EKLE"</div>
           </div>
         </div>
         <p style={{ marginTop: '1.5rem', fontSize: '0.9rem', color: 'var(--accent-color)', fontWeight: 700 }}>

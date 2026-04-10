@@ -63,6 +63,7 @@ const ProjectSchema = new mongoose.Schema({
     jobName: String,
     kubajData: Object,
     hakedisData: Object,
+    cadData: { type: Object, default: { entities: [], layers: [] } },
     updatedAt: { type: Date, default: Date.now }
 }, { toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
@@ -254,6 +255,24 @@ app.get('/api/kubaj', async (req, res) => {
         const project = await Project.findOne({ firmId, jobName });
         res.json(project?.kubajData || { points: [], results: null });
     } catch (err) { res.status(500).send('Veri çekilemedi.'); }
+});
+
+app.get('/api/cad', async (req, res) => {
+    const { 'x-firm-id': firmId, 'x-job-name': jobNameEncoded } = req.headers;
+    const jobName = jobNameEncoded ? decodeURIComponent(jobNameEncoded) : null;
+    try {
+        const project = await Project.findOne({ firmId, jobName });
+        res.json(project?.cadData || { entities: [], layers: [] });
+    } catch (err) { res.status(500).send('Veri çekilemedi.'); }
+});
+
+app.post('/api/cad', async (req, res) => {
+    const { 'x-firm-id': firmId, 'x-job-name': jobNameEncoded } = req.headers;
+    const jobName = jobNameEncoded ? decodeURIComponent(jobNameEncoded) : null;
+    try {
+        await Project.findOneAndUpdate({ firmId, jobName }, { cadData: req.body, updatedAt: Date.now() }, { upsert: true });
+        res.json({ message: 'Çizim kaydedildi.' });
+    } catch (err) { res.status(500).send('Çizim kaydedilemedi.'); }
 });
 
 app.post('/api/hakedis', async (req, res) => {

@@ -5,14 +5,16 @@ import {
   FileText, Download, LayoutDashboard, Settings, 
   Menu, X, ChevronRight, HardHat, Info, Pencil, Trash2,
   Plus, PlusSquare, Building2, FileCheck, RefreshCw,
-  PlusSquare, FileCheck, Building2, FileCheck, RefreshCw,
-  LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory, Sparkles, TrendingDown, TrendingUp, AlertCircle, Camera, Image as ImageIcon
+  LogOut, CircleUser, BookOpen, Ruler, Square, Target, MousePointer2, Save, Factory, Sparkles, TrendingDown, TrendingUp, AlertCircle, Camera, Image as ImageIcon,
+  Pencil as PencilIcon, Minus as MinusIcon, TreePine
 } from 'lucide-react';
+import WebCAD from './WebCAD';
+import LandscapeArchitect from './LandscapeArchitect';
 import EXIF from 'exif-js';
 import GuideContent from './GuideContent';
-import { Canvas, useFrame, extend, useThree } from 'react-three-fiber';
+import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { PCDLoader } from 'three/examples/jsm/loaders/PCDLoader.js';
 import PointCloudViewer from './PointCloudViewer';
@@ -207,14 +209,19 @@ function Login({ username, password, setUsername, setPassword, error, loading, o
 }
 
 function App() {
+  // API URL Ayarı: Geliştirme ortamında proxy üzerinden, canlıda ise direkt "/api" ile çalışır.
+  const API_URL = "";
+  console.log("🔄 PORTAL: Uygulama başlatılıyor. API Adresi:", window.location.origin + "/api");
+
   const [activeModule, setActiveModule] = useState('kubaj');
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // To keep my future layout changes happy
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [points, setPoints] = useState([]);
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('data');
   const [hakedisData, setHakedisData] = useState([]);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // AUTH STATE
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('auth_token'));
@@ -269,6 +276,17 @@ function App() {
   // Point Cloud State
   const [pointCloudData, setPointCloudData] = useState(null);
   const [isCloudLoading, setIsCloudLoading] = useState(false);
+
+  // CAD State
+  const [cadData, setCadData] = useState({ entities: [], layers: [] });
+
+  const handleSaveCAD = async (newCadData) => {
+    try {
+      await axios.post(`${API_URL}/api/cad`, newCadData, getHeaders());
+      alert("Çizim başarıyla kaydedildi.");
+      setCadData(newCadData);
+    } catch(e) { alert("Kaydedilemedi."); }
+  };
 
   const handlePointCloudUpload = async (e) => {
     const file = e.target.files[0];
@@ -561,6 +579,7 @@ function App() {
     { id: 'pointcloud', label: '3D Nokta Bulutu', icon: <Target size={18} /> },
     { id: 'hakedis', label: 'Hakediş Yönetimi', icon: <FileCheck size={18} /> },
     { id: 'archive', label: 'İş Takip Paneli', icon: <LayoutDashboard size={18} /> },
+    { id: 'peyzaj', label: 'Peyzaj Mimarı', icon: <TreePine size={18} /> },
     { id: 'converter', label: 'Format Dönüştürücü', icon: <RefreshCw size={18} /> },
     { id: 'settings', label: 'Ayarlar', icon: <Settings size={18} /> },
     { id: 'guide', label: 'Kullanım Kılavuzu', icon: <BookOpen size={18} /> },
@@ -575,11 +594,6 @@ function App() {
     kontrolEdenAdi: ''
   });
 
-
-  // API URL Ayarı: Proxy ve Vercel rewrite sayesinde her ortamda sadece "/api" kullanıyoruz.
-  const API_URL = ""; 
-
-  console.log("DEBUG: API Çağrısı Yapılıyor. Mevcut Adres:", window.location.origin + API_URL);
 
   // Firmaya Özel Header Hazırla
   const getHeaders = React.useCallback(() => {
@@ -771,6 +785,12 @@ function App() {
         setPoints(kResp.data.points || []);
         setResults(kResp.data.results || null);
         
+        // CAD Verilerini Çek
+        try {
+          const cResp = await axios.get(`${API_URL}/api/cad`, getHeaders());
+          setCadData(cResp.data || { entities: [], layers: [] });
+        } catch(e) { console.error("CAD çekilemedi", e); }
+
         // AI Analizini tetikle
         performAIAnalysis(kResp.data.points || [], kResp.data.results?.totalVolume);
         
@@ -1131,7 +1151,13 @@ function App() {
     }
   };
 
+  // Hata durumunda render koruması
+  if (loginError && !authToken) {
+    console.warn("⚠️ AUTH HATASI:", loginError);
+  }
+
   const renderContent = () => {
+    try {
     switch (activeModule) {
       case 'kubaj':
         return (
@@ -1733,6 +1759,21 @@ function App() {
           </div>
         );
 
+      case 'peyzaj':
+        return (
+          <div className="module-container anim-fade-in">
+            <header className="module-header">
+              <div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Peyzaj Mimarı</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Eskizden Profesyonel Peyzaj Planına Dönüşüm</p>
+              </div>
+            </header>
+            <main>
+              <LandscapeArchitect />
+            </main>
+          </div>
+        );
+
       case 'settings':
         return (
           <div className="module-container anim-fade-in">
@@ -2297,6 +2338,10 @@ function App() {
         );
       default:
         return null;
+      }
+    } catch (err) {
+      console.error("❌ MODÜL RENDER HATASI:", err);
+      return <div style={{ padding: '2rem', color: '#ef4444' }}><h4>Modül yüklenirken bir hata oluştu.</h4><p>{err.message}</p></div>;
     }
   };
 
@@ -2316,284 +2361,176 @@ function App() {
 
   return (
     <div className="dashboard-container">
-      {/* Premium Background Effects */}
       <div className="mesh-bg"></div>
-      
-      {/* Mobil Toggle */}
-      <button 
-        className="sidebar-toggle-mobile"
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        title={mobileMenuOpen ? "Menüyü Kapat" : "Menüyü Aç"}
-      >
-        {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
 
-      {/* Karartma Overlay (Mobilde) */}
-      <div 
-        className={`overlay ${mobileMenuOpen ? 'visible' : ''}`}
-        onClick={() => setMobileMenuOpen(false)}
-      ></div>
+      {/* OFF-CANVAS OVERLAY */}
+      <div
+        onClick={() => setIsMenuOpen(false)}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.55)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          opacity: isMenuOpen ? 1 : 0,
+          pointerEvents: isMenuOpen ? 'all' : 'none',
+          transition: 'opacity 0.3s ease',
+        }}
+      />
 
-      {/* Sidebar */}
-      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-header" style={{ marginBottom: '1.5rem', padding: '2rem 1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ 
-              background: 'linear-gradient(135deg, var(--primary-color), var(--primary-hover))', 
-              padding: '0.6rem', 
-              borderRadius: '12px',
-              boxShadow: '0 8px 20px rgba(59, 130, 246, 0.3)' 
-            }}>
-              <MapIcon size={22} color="white" />
+      {/* OFF-CANVAS DRAWER */}
+      <aside style={{
+        position: 'fixed', top: 0, left: 0, height: '100vh',
+        width: '300px', zIndex: 201,
+        background: 'rgba(2,6,23,0.97)',
+        borderRight: '1px solid rgba(255,255,255,0.08)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        display: 'flex', flexDirection: 'column',
+        transform: isMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.32s cubic-bezier(0.16,1,0.3,1)',
+        boxShadow: isMenuOpen ? '20px 0 60px rgba(0,0,0,0.6)' : 'none',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.5rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', padding: '8px', borderRadius: '10px', boxShadow: '0 6px 16px rgba(99,102,241,0.4)' }}>
+              <MapIcon size={20} color="white" />
             </div>
-            {!isSidebarCollapsed && (
-              <span style={{ fontWeight: 900, fontSize: '1.15rem', letterSpacing: '-0.8px', color: '#fff' }}>HARİTA PORTALI</span>
-            )}
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff', letterSpacing: '-0.3px' }}>Harita Portalı</div>
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Muhammed BİLİCİ</div>
+            </div>
           </div>
+          <button onClick={() => setIsMenuOpen(false)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '6px', color: '#94a3b8', cursor: 'pointer', display: 'flex' }}>
+            <X size={18} />
+          </button>
         </div>
 
-        {/* User Profile Section at Top */}
-        <div className={`user-profile-top ${isSidebarCollapsed ? 'collapsed' : ''}`} style={{
-          padding: '0.75rem 1rem',
-          margin: '0 0.5rem 1.5rem',
-          borderRadius: '12px',
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid var(--glass-border)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          transition: 'all 0.3s ease'
-        }}>
-          <div style={{ 
-            minWidth: '36px', 
-            height: '36px', 
-            borderRadius: '10px', 
-            background: 'var(--primary-color)', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            color: 'white',
-            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
-          }}>
-            <CircleUser size={20} />
+        <div style={{ margin: '1rem 1rem 0', padding: '0.75rem 1rem', borderRadius: '12px', background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(79,70,229,0.05))', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg,#6366f1,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(99,102,241,0.3)', flexShrink: 0 }}>
+            <CircleUser size={18} color="white" />
           </div>
-          
-          {!isSidebarCollapsed && (
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ 
-                  fontSize: '0.85rem', 
-                  fontWeight: 700, 
-                  color: '#fff', 
-                  whiteSpace: 'nowrap', 
-                  overflow: 'hidden', 
-                  textOverflow: 'ellipsis' 
-                }}>
-                  {currentUser}
-                </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 700, textTransform: 'uppercase' }}>
-                  {currentRole}
-                </div>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="btn-icon-small"
-                title="Çıkış Yap"
-                style={{ 
-                  background: 'rgba(239, 68, 68, 0.1)', 
-                  color: '#ef4444', 
-                  marginLeft: '8px',
-                  padding: '6px'
-                }}
-              >
-                <LogOut size={16} />
-              </button>
-            </div>
-          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentUser}</div>
+            <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{currentRole}</div>
+          </div>
+          <button onClick={handleLogout} title="Çıkış Yap" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '6px', color: '#ef4444', cursor: 'pointer', display: 'flex' }}>
+            <LogOut size={15} />
+          </button>
         </div>
 
-        {/* Sidebar Nav (Main Tools Only) */}
-        <div style={{ padding: '0 1rem 1rem', flex: 1, overflowY: 'auto' }}>
-          {!isSidebarCollapsed && (
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '1rem', paddingLeft: '1rem' }}>ARAÇLAR</span>
-          )}
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {navigationItems.map(item => (
+        <div style={{ padding: '1.25rem 1.5rem 0.5rem', fontSize: '0.65rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Modüller</div>
+
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '0 0.75rem' }}>
+          {navigationItems.map(item => {
+            const isActive = activeModule === item.id;
+            return (
               <button
                 key={item.id}
-                onClick={() => {
-                  setActiveModule(item.id);
-                  setMobileMenuOpen(false);
-                }}
-                className={`nav-item ${activeModule === item.id ? 'active' : ''}`}
+                onClick={() => { setActiveModule(item.id); setIsMenuOpen(false); }}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '10px',
-                  width: '100%',
-                  textAlign: 'left',
-                  background: activeModule === item.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                  borderLeft: activeModule === item.id ? '3px solid var(--primary-color)' : '3px solid transparent',
-                  color: activeModule === item.id ? 'var(--primary-color)' : 'var(--text-muted)',
-                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                  position: 'relative'
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  width: '100%', padding: '0.75rem 1rem', marginBottom: '2px',
+                  borderRadius: '10px', textAlign: 'left', cursor: 'pointer',
+                  background: isActive ? 'linear-gradient(90deg,rgba(99,102,241,0.2),rgba(99,102,241,0.05))' : 'transparent',
+                  border: 'none',
+                  borderLeft: isActive ? '3px solid #6366f1' : '3px solid transparent',
+                  color: isActive ? '#818cf8' : '#94a3b8',
+                  transition: 'all 0.2s ease',
                 }}
               >
-                {item.icon}
-                {!isSidebarCollapsed && (
-                  <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{item.label}</span>
-                )}
-                {activeModule === item.id && !isSidebarCollapsed && (
-                  <ChevronRight size={16} style={{ position: 'absolute', right: '12px', opacity: 0.5 }} />
-                )}
+                <span style={{ opacity: isActive ? 1 : 0.7 }}>{item.icon}</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: isActive ? 700 : 500 }}>{item.label}</span>
+                {isActive && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.5 }} />}
               </button>
-            ))}
-          </nav>
-        </div>
+            );
+          })}
+        </nav>
 
-        <div className="sidebar-footer" style={{ padding: '0.75rem', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'center' }}>
-          <button 
-            className="nav-item" 
-            style={{ 
-              width: '100%', 
-              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
-              gap: '12px',
-              padding: '0.75rem',
-              color: 'var(--text-muted)',
-              border: 'none',
-              background: 'transparent'
-            }}
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            title={isSidebarCollapsed ? "Sidebar'ı Genişlet" : "Sidebar'ı Daralt"}
-          >
-            {isSidebarCollapsed ? <ChevronRight size={20} /> : (
-              <>
-                <X size={18} />
-                <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Menüyü Daralt</span>
-              </>
-            )}
-          </button>
+        <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
+          © 2024 Muhammed BİLİCİ
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="main-content">
-        <header className="main-header" style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          marginBottom: '2rem', 
-          flexWrap: 'wrap', 
-          gap: '1.5rem',
-          background: 'rgba(30, 41, 59, 0.4)',
-          padding: '1.25rem 1.5rem',
-          borderRadius: '16px',
-          border: '1px solid var(--glass-border)',
-          backdropFilter: 'blur(10px)'
-        }}>
-          <div className="header-title-group" style={{ minWidth: '200px' }}>
-            <h1 className="header-title" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
-              Harita Çözümleri
-            </h1>
-            <p className="header-subtitle" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Muhammed BİLİCİ
-            </p>
+      {/* MAIN CONTENT */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', overflow: 'hidden' }}>
+
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.5rem', background: 'rgba(2,6,23,0.8)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 30px rgba(0,0,0,0.3)', position: 'sticky', top: 0, zIndex: 100, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <button
+              onClick={() => setIsMenuOpen(true)}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '9px 10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', transition: 'all 0.2s' }}
+              onMouseEnter={e => { e.currentTarget.style.background='rgba(99,102,241,0.15)'; e.currentTarget.style.borderColor='rgba(99,102,241,0.3)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'; }}
+            >
+              <span style={{ display:'block', width:'18px', height:'2px', background:'#fff', borderRadius:'2px' }} />
+              <span style={{ display:'block', width:'13px', height:'2px', background:'#94a3b8', borderRadius:'2px' }} />
+              <span style={{ display:'block', width:'18px', height:'2px', background:'#fff', borderRadius:'2px' }} />
+            </button>
+            <div>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>
+                {navigationItems.find(n => n.id === activeModule)?.label || 'Harita Çözümleri'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>Muhammed BİLİCİ</div>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            {/* Firm Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '5px 12px', borderRadius: '10px', border: '1px solid var(--glass-border)' }}>
-              <Building2 size={16} color="var(--primary-color)" />
-              <select 
-                className="top-select"
-                value={selectedFirm?.id || ''} 
-                onChange={(e) => {
-                  const firm = firms.find(f => f.id === e.target.value);
-                  setSelectedFirm(firm);
-                  setSelectedProject('');
-                }}
-                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: 600, outline: 'none', cursor: 'pointer', padding: '5px' }}
-              >
-                <option value="" disabled style={{background: '#1e293b'}}>Firma Seçin...</option>
-                {firms.map(f => <option key={f.id} value={f.id} style={{background: '#1e293b'}}>{f.name}</option>)}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'6px', background:'rgba(255,255,255,0.04)', padding:'5px 10px', borderRadius:'8px', border:'1px solid rgba(255,255,255,0.07)' }}>
+              <Building2 size={14} color="#6366f1" />
+              <select className="top-select" value={selectedFirm?.id || ''} onChange={(e) => { const firm = firms.find(f => f.id === e.target.value); setSelectedFirm(firm); setSelectedProject(''); }} style={{ background:'none', border:'none', color:'#fff', fontSize:'0.82rem', fontWeight:600, outline:'none', cursor:'pointer', maxWidth:'120px' }}>
+                <option value="" disabled style={{ background:'#0f172a' }}>Firma...</option>
+                {firms.map(f => <option key={f.id} value={f.id} style={{ background:'#0f172a' }}>{f.name}</option>)}
               </select>
-              <button onClick={() => setShowAddFirm(!showAddFirm)} className="btn-icon-small" title="Firma Ekle">
-                <Plus size={16} />
-              </button>
+              <button onClick={() => setShowAddFirm(!showAddFirm)} title="Firma Ekle" style={{ background:'none', border:'none', padding:'2px', cursor:'pointer', color:'#6366f1', display:'flex' }}><Plus size={14} /></button>
+              {selectedFirm && (
+                <button
+                  onClick={() => handleDeleteFirm(selectedFirm.id)}
+                  title="Seçili Firmayı Sil"
+                  style={{ background:'none', border:'none', padding:'2px', cursor:'pointer', color:'#ef4444', display:'flex' }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
             </div>
 
-            {/* Project Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '5px 12px', borderRadius: '10px', border: '1px solid var(--glass-border)' }}>
-              <FileCheck size={16} color="var(--accent-color)" />
-              <select 
-                className="top-select"
-                value={selectedProject} 
-                onChange={(e) => setSelectedProject(e.target.value)}
-                disabled={!selectedFirm}
-                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: 600, outline: 'none', cursor: 'pointer', padding: '5px', opacity: !selectedFirm ? 0.5 : 1 }}
-              >
-                <option value="" disabled style={{background: '#1e293b'}}>İş Seçin...</option>
-                {projects.map(p => <option key={p} value={p} style={{background: '#1e293b'}}>{p}</option>)}
+            <div style={{ display:'flex', alignItems:'center', gap:'6px', background:'rgba(255,255,255,0.04)', padding:'5px 10px', borderRadius:'8px', border:'1px solid rgba(255,255,255,0.07)' }}>
+              <FileCheck size={14} color="#0d9488" />
+              <select className="top-select" value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} disabled={!selectedFirm} style={{ background:'none', border:'none', color: selectedProject ? '#0d9488':'#fff', fontSize:'0.82rem', fontWeight:600, outline:'none', cursor:'pointer', maxWidth:'120px', opacity: !selectedFirm ? 0.4 : 1 }}>
+                <option value="" disabled style={{ background:'#0f172a' }}>İş...</option>
+                {projects.map(p => <option key={p} value={p} style={{ background:'#0f172a' }}>{p}</option>)}
               </select>
-              <button 
-                onClick={() => selectedFirm && handleAddProject(selectedFirm.id)} 
-                className="btn-icon-small" 
-                title="İş Ekle"
-                disabled={!selectedFirm}
-              >
-                <Plus size={16} />
+              <button onClick={() => selectedFirm && handleAddProject(selectedFirm.id)} disabled={!selectedFirm} style={{ background:'none', border:'none', padding:'2px', cursor:'pointer', color:'#0d9488', display:'flex', opacity: !selectedFirm ? 0.4 : 1 }}><Plus size={14} /></button>
+            </div>
+
+            {selectedProject && (
+              <button onClick={() => handleDeleteProject(selectedFirm.id, selectedProject)} title="Seçili İşi Sil" style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:'8px', padding:'7px', color:'#ef4444', cursor:'pointer', display:'flex' }}>
+                <Trash2 size={15} />
               </button>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {selectedProject && (
-                <button 
-                  onClick={() => handleDeleteProject(selectedFirm.id, selectedProject)} 
-                  className="btn-icon-small" 
-                  style={{ color: 'var(--error-color)', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '8px' }}
-                  title="Seçili İşi Sil"
-                >
-                  <Trash2 size={16} />
-                </button>
-              )}
-              {selectedFirm && (
-                <button 
-                  onClick={() => handleBackupFirm(selectedFirm.id, selectedFirm.name)} 
-                  className="btn-icon-small" 
-                  style={{ color: 'var(--primary-color)', background: 'rgba(59, 130, 246, 0.1)', padding: '8px', borderRadius: '8px' }}
-                  title="Firma Yedeği Al"
-                >
-                  <Download size={16} />
-                </button>
-              )}
-            </div>
+            )}
+            {selectedFirm && (
+              <button onClick={() => handleBackupFirm(selectedFirm.id, selectedFirm.name)} title="Yedek Al" style={{ background:'rgba(99,102,241,0.1)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:'8px', padding:'7px', color:'#6366f1', cursor:'pointer', display:'flex' }}>
+                <Download size={15} />
+              </button>
+            )}
           </div>
         </header>
 
         {showAddFirm && (
-          <div className="anim-scale-in" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-            <div className="glass-card" style={{ width: '400px', margin: 'auto' }}>
-              <h3 style={{ marginBottom: '1.5rem' }}>Yeni Firma Ekle</h3>
-              <input 
-                type="text" 
-                placeholder="Firma Adı..." 
-                className="table-input" 
-                value={newFirmName} 
-                onChange={e => setNewFirmName(e.target.value)}
-                style={{ marginBottom: '1.5rem' }}
-                autoFocus
-              />
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <button onClick={() => setShowAddFirm(false)} className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>İptal</button>
-                <button onClick={handleAddFirm} className="btn" style={{ flex: 1, justifyContent: 'center' }}>Ekle</button>
+          <div className="anim-scale-in" style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)' }}>
+            <div className="glass-card" style={{ width:'400px' }}>
+              <h3 style={{ marginBottom:'1.5rem' }}>Yeni Firma Ekle</h3>
+              <input type="text" placeholder="Firma Adı..." className="table-input" value={newFirmName} onChange={e => setNewFirmName(e.target.value)} style={{ marginBottom:'1.5rem' }} autoFocus />
+              <div style={{ display:'flex', gap:'1rem' }}>
+                <button onClick={() => setShowAddFirm(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>İptal</button>
+                <button onClick={handleAddFirm} className="btn" style={{ flex:1, justifyContent:'center' }}>Ekle</button>
               </div>
             </div>
           </div>
         )}
 
-        {renderContent()}
+        <div style={{ flex: 1, overflow: 'auto', padding: '2rem' }}>
+          {renderContent()}
+        </div>
       </div>
     </div>
   );

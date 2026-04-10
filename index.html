@@ -16,6 +16,14 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.addEventListener('error', function(e) {
+        document.body.innerHTML += '<div style="color:red; background:#fee; padding:20px; z-index:9999; position:absolute; top:0; left:0; width:100%;"><h3>Global Error</h3><pre>' + (e.error ? e.error.stack : e.message) + '</pre></div>';
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        document.body.innerHTML += '<div style="color:red; background:#fee; padding:20px; z-index:9999; position:absolute; top:0; left:0; width:100%;"><h3>Unhandled Promise Rejection</h3><pre>' + (e.reason ? (e.reason.stack || e.reason) : e) + '</pre></div>';
+      });
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
