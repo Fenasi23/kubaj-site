@@ -38,11 +38,11 @@ const LandscapeArchitect = () => {
         const imageData = ctx.getImageData(0, 0, w, h);
         const data = imageData.data;
         
-        const threshold = 130; // Siyah/Beyaz ayrım eşiği (Hassasiyet)
-        const step = 4; // Atlanacak piksel sayısı
+        const threshold = 210; // Daha hassas: Hafif kalem izlerini de yakalar
+        const step = 3; // Çözünürlüğü biraz artırdık
         
-        // Aspect ratio'ya göre CAD koordinatları (Max 200 birim)
-        const cadW = 200;
+        // Aspect ratio'ya göre CAD koordinatları
+        const cadW = 500; 
         const cadH = cadW * (h / w);
         
         const lines = [];
@@ -50,16 +50,19 @@ const LandscapeArchitect = () => {
             for(let x = 0; x < w; x += step) {
                 const i = (y * w + x) * 4;
                 const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
-                const brightness = (r + g + b) / 3;
+                // Siyah/beyaz dönüşümü
+                const brightness = (0.299*r + 0.587*g + 0.114*b); 
                 
-                // Eğer piksel koyuysa ve şeffaf değilse (Çizgi)
+                // Eğer piksel kağıt beyazından koyuysa (Kalem iziyse)
                 if (brightness < threshold && a > 50) {
                     const cadX = (x / w) * cadW - (cadW / 2);
                     const cadY = -((y / h) * cadH - (cadH / 2));
                     
+                    // Daha belirgin ve uzun cizgiler
+                    const segmentWidth = (cadW / w) * step * 1.5;
                     lines.push([
                       { x: cadX, y: cadY },
-                      { x: cadX + 0.5, y: cadY + 0.5 }
+                      { x: cadX + segmentWidth, y: cadY } // Yatay kısa çizgiler
                     ]);
                 }
             }
