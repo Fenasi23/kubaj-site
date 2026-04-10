@@ -819,8 +819,23 @@ function App() {
       setShowAddFirm(false);
     } catch (error) {
       console.error("Firma ekleme hatasi:", error);
-      const errorMsg = error.response?.data?.message || error.response?.data || error.message;
-      alert("Firma eklenemedi: " + errorMsg);
+      let errorMsg = "Bilinmeyen bir hata oluştu";
+      
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMsg = error.response.data;
+        } else if (error.response.data.message) {
+          errorMsg = error.response.data.message;
+        } else if (error.response.data.error) {
+          errorMsg = error.response.data.error;
+        } else {
+          errorMsg = JSON.stringify(error.response.data);
+        }
+      } else {
+        errorMsg = error.message;
+      }
+      
+      alert("❌ Firma eklenemedi: " + errorMsg);
     }
   };
 
