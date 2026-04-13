@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   Upload, TreePine, Map as MapIcon, 
   Waves, Coffee, Baby, Dumbbell, Download, 
