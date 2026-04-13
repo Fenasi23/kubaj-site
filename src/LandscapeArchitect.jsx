@@ -25,258 +25,42 @@ const LandscapeArchitect = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const handleAutoTrace = () => {
+  const handleAutoTrace = async () => {
     if (!sketchImage) return alert("Önce bir eskiz yükleyin.");
     setIsTracing(true);
     
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.onload = () => {
-      // UI güncellemesi için bir tick bekle, sonra ağır hesaplamaya başla
-      setTimeout(() => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    try {
+      const response = await fetch('/api/trace-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData: sketchImage, cadWidth: 1000 })
+      });
+
+      if (!response.ok) {
+        throw new Error('Sunucu hatası: ' + response.statusText);
+      }
+
+      const data = await response.json();
+      
+      if (data.polylines && data.polylines.length > 0) {
+        const newEntities = data.polylines.map(pl => ({
+          id: Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          type: 'line',
+          points: pl,
+          layerId: '0',
+          color: '#facc15'
+        }));
         
-        const maxWidth = 1000;
-        const sc = Math.min(1, maxWidth / img.width);
-        const w = Math.floor(img.width * sc);
-        const h = Math.floor(img.height * sc);
-        
-        canvas.width = w;
-        canvas.height = h;
-        ctx.drawImage(img, 0, 0, w, h);
-        
-        const data = ctx.getImageData(0, 0, w, h).data;
-        const cadW = 1000;
-        const cadH = cadW * (h / w);
-        
-        // ===== ADIM 1: Gri tonlama =====
-        const gray = new Uint8Array(w * h);
-        for (let i = 0; i < w * h; i++) {
-          const idx = i * 4;
-          gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]);
-        }
-        
-        // ===== ADIM 1.5: Gauss Bulanıklaştırma (kağıt dokusunu yok et) =====
-        const blurred = new Uint8Array(w * h);
-        for (let y = 2; y < h-2; y++) {
-          for (let x = 2; x < w-2; x++) {
-            let sum = 0, cnt = 0;
-            for (let ky = -2; ky <= 2; ky++) {
-              for (let kx = -2; kx <= 2; kx++) {
-                sum += gray[(y+ky)*w + (x+kx)];
-                cnt++;
-              }
-            }
-            blurred[y*w+x] = Math.round(sum / cnt);
-          }
-        }
-        
-        // ===== ADIM 2: Adaptif Eşikleme =====
-        const integral = new Float64Array((w+1) * (h+1));
-        for (let y = 0; y < h; y++) {
-          let rowSum = 0;
-          for (let x = 0; x < w; x++) {
-            rowSum += blurred[y * w + x];
-            integral[(y+1) * (w+1) + (x+1)] = integral[y * (w+1) + (x+1)] + rowSum;
-          }
-        }
-        
-        const binary = new Uint8Array(w * h);
-        const blockHalf = 25; // Daha geniş pencere (51x51)
-        const C = 25; // Çok daha katı: sadece gerçek kalem çizgileri geçer
-        
-        for (let y = 0; y < h; y++) {
-          for (let x = 0; x < w; x++) {
-            const x1 = Math.max(0, x - blockHalf);
-            const y1 = Math.max(0, y - blockHalf);
-            const x2 = Math.min(w - 1, x + blockHalf);
-            const y2 = Math.min(h - 1, y + blockHalf);
-            const count = (x2 - x1 + 1) * (y2 - y1 + 1);
-            const sum = integral[(y2+1)*(w+1)+(x2+1)] - integral[y1*(w+1)+(x2+1)]
-                      - integral[(y2+1)*(w+1)+x1] + integral[y1*(w+1)+x1];
-            const mean = sum / count;
-            binary[y * w + x] = (blurred[y * w + x] < mean - C) ? 1 : 0;
-          }
-        }
-        
-        // ===== ADIM 3: Güçlü Gürültü Temizleme =====
-        const cleaned = new Uint8Array(w * h);
-        for (let y = 1; y < h-1; y++) {
-          for (let x = 1; x < w-1; x++) {
-            if (binary[y*w+x] === 0) continue;
-            let nb = 0;
-            for (let dy = -1; dy <= 1; dy++)
-              for (let dx = -1; dx <= 1; dx++)
-                if (!(dy === 0 && dx === 0) && binary[(y+dy)*w+(x+dx)] === 1) nb++;
-            cleaned[y*w+x] = nb >= 3 ? 1 : 0; // En az 3 komşu gerekli
-          }
-        }
-        
-        // ===== ADIM 4: Zhang-Suen İskelet İncelme =====
-        // Kalın çizgileri tek piksel genişliğine indirir
-        const skel = new Uint8Array(cleaned);
-        
-        const getN = (x, y) => [
-          skel[(y-1)*w+x],     // P2 (kuzey)
-          skel[(y-1)*w+(x+1)], // P3
-          skel[y*w+(x+1)],     // P4 (doğu)
-          skel[(y+1)*w+(x+1)], // P5
-          skel[(y+1)*w+x],     // P6 (güney)
-          skel[(y+1)*w+(x-1)], // P7
-          skel[y*w+(x-1)],     // P8 (batı)
-          skel[(y-1)*w+(x-1)]  // P9
-        ];
-        
-        const transitions = (n) => {
-          let c = 0;
-          for (let i = 0; i < 8; i++) if (n[i] === 0 && n[(i+1)%8] === 1) c++;
-          return c;
-        };
-        
-        const sumArr = (n) => n.reduce((a, b) => a + b, 0);
-        
-        let changed = true;
-        let maxIter = 50; // Sonsuz döngüyü engelle
-        while (changed && maxIter-- > 0) {
-          changed = false;
-          
-          // Alt-iterasyon 1
-          const rem1 = [];
-          for (let y = 1; y < h-1; y++) {
-            for (let x = 1; x < w-1; x++) {
-              if (skel[y*w+x] === 0) continue;
-              const n = getN(x, y);
-              const B = sumArr(n);
-              if (B < 2 || B > 6) continue;
-              if (transitions(n) !== 1) continue;
-              if (n[0]*n[2]*n[4] !== 0) continue; // P2*P4*P6
-              if (n[2]*n[4]*n[6] !== 0) continue; // P4*P6*P8
-              rem1.push(y*w+x);
-            }
-          }
-          for (const idx of rem1) { skel[idx] = 0; changed = true; }
-          
-          // Alt-iterasyon 2
-          const rem2 = [];
-          for (let y = 1; y < h-1; y++) {
-            for (let x = 1; x < w-1; x++) {
-              if (skel[y*w+x] === 0) continue;
-              const n = getN(x, y);
-              const B = sumArr(n);
-              if (B < 2 || B > 6) continue;
-              if (transitions(n) !== 1) continue;
-              if (n[0]*n[2]*n[6] !== 0) continue; // P2*P4*P8
-              if (n[0]*n[4]*n[6] !== 0) continue; // P2*P6*P8
-              rem2.push(y*w+x);
-            }
-          }
-          for (const idx of rem2) { skel[idx] = 0; changed = true; }
-        }
-        
-        // ===== ADIM 5: İskelet Üzerinde Zincir Takibi =====
-        const edgePoints = [];
-        for (let y = 1; y < h-1; y++) {
-          for (let x = 1; x < w-1; x++) {
-            if (skel[y*w+x] === 1) {
-              edgePoints.push({
-                px: x, py: y,
-                cadX: (x / w) * cadW - (cadW / 2),
-                cadY: -((y / h) * cadH - (cadH / 2))
-              });
-            }
-          }
-        }
-        
-        const used = new Set();
-        const polylines = [];
-        const maxChainDist = 3;
-        
-        // Grid-tabanlı hızlı arama
-        const gs = 4;
-        const grid = {};
-        edgePoints.forEach((p, i) => {
-          const key = `${Math.floor(p.px/gs)},${Math.floor(p.py/gs)}`;
-          if (!grid[key]) grid[key] = [];
-          grid[key].push(i);
-        });
-        
-        const findNext = (px, py, exc) => {
-          const gx = Math.floor(px / gs), gy = Math.floor(py / gs);
-          let best = -1, bestD = maxChainDist * maxChainDist;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const cell = grid[`${gx+dx},${gy+dy}`];
-              if (!cell) continue;
-              for (const idx of cell) {
-                if (used.has(idx) || exc.has(idx)) continue;
-                const d = (edgePoints[idx].px-px)**2 + (edgePoints[idx].py-py)**2;
-                if (d < bestD) { bestD = d; best = idx; }
-              }
-            }
-          }
-          return best;
-        };
-        
-        for (let i = 0; i < edgePoints.length; i++) {
-          if (used.has(i)) continue;
-          used.add(i);
-          const chain = [edgePoints[i]];
-          const cSet = new Set([i]);
-          let cur = edgePoints[i];
-          while (true) {
-            const nx = findNext(cur.px, cur.py, cSet);
-            if (nx === -1) break;
-            used.add(nx); cSet.add(nx);
-            chain.push(edgePoints[nx]);
-            cur = edgePoints[nx];
-          }
-          if (chain.length >= 10) polylines.push(chain); // Kısa gürültü zincirlerini at
-        }
-        
-        // ===== ADIM 6: Douglas-Peucker Sadeleştirme =====
-        const ptDist = (p, a, b) => {
-          const dx = b.cadX-a.cadX, dy = b.cadY-a.cadY;
-          const len2 = dx*dx+dy*dy;
-          if (len2 === 0) return Math.hypot(p.cadX-a.cadX, p.cadY-a.cadY);
-          const t = Math.max(0, Math.min(1, ((p.cadX-a.cadX)*dx+(p.cadY-a.cadY)*dy)/len2));
-          return Math.hypot(p.cadX-(a.cadX+t*dx), p.cadY-(a.cadY+t*dy));
-        };
-        
-        const simplify = (pts, tol) => {
-          if (pts.length <= 2) return pts;
-          let mxD = 0, mxI = 0;
-          for (let i = 1; i < pts.length-1; i++) {
-            const d = ptDist(pts[i], pts[0], pts[pts.length-1]);
-            if (d > mxD) { mxD = d; mxI = i; }
-          }
-          if (mxD > tol) {
-            const l = simplify(pts.slice(0, mxI+1), tol);
-            const r = simplify(pts.slice(mxI), tol);
-            return l.slice(0,-1).concat(r);
-          }
-          return [pts[0], pts[pts.length-1]];
-        };
-        
-        const result = polylines.map(pl => simplify(pl, 1.5));
-        
-        // ===== ADIM 7: CAD Objeleri Olarak Ekle =====
-        if (result.length > 0) {
-          const ents = result.map(pl => ({
-            id: Date.now() + '_' + Math.random().toString(36).substr(2),
-            type: 'line',
-            points: pl.map(p => ({ x: +p.cadX.toFixed(2), y: +p.cadY.toFixed(2) })),
-            layerId: '0',
-            color: '#facc15'
-          }));
-          setCadEntities(prev => [...prev, ...ents]);
-        } else {
-          alert("Çizim algılanamadı. Lütfen daha belirgin hatları olan bir eskiz yükleyin.");
-        }
-        setIsTracing(false);
-      }, 50);
-    };
-    img.src = sketchImage;
+        setCadEntities(prev => [...prev, ...newEntities]);
+      } else {
+        alert("Çizim algılanamadı veya çok silik. Lütfen daha belirgin hatları olan bir eskiz yükleyin.");
+      }
+    } catch (error) {
+      console.error('Trace hatası:', error);
+      alert('Otomatik çizim yapılırken bir hata oluştu: ' + error.message);
+    } finally {
+      setIsTracing(false);
+    }
   };
 
   const handleSketchUpload = (e) => {
