@@ -844,7 +844,8 @@ function App() {
         errorMsg = "Hata detayı alınamadı";
       }
       
-      alert(`❌ Firma eklenemedi!\n\nDetay: ${errorMsg}`);
+      const debugDetails = typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg;
+      alert(`❌ Firma eklenemedi!\n\nDetay: ${debugDetails}`);
     }
   };
 
