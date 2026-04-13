@@ -91,7 +91,7 @@ const LandscapeArchitect = () => {
         }
         
         // --- ADIM 4: Eşikleme ve kenar noktalarını toplama ---
-        const threshold = maxEdge * 0.12;
+        const threshold = maxEdge * 0.06;
         const step = 2;
         const edgePoints = [];
         
@@ -164,7 +164,7 @@ const LandscapeArchitect = () => {
                 current = edgePoints[next];
             }
             
-            if (chain.length >= 4) {
+            if (chain.length >= 2) {
                 polylines.push(chain);
             }
         }
@@ -193,7 +193,7 @@ const LandscapeArchitect = () => {
             return [pts[0], pts[pts.length-1]];
         };
         
-        const tolerance = 2.0;
+        const tolerance = 1.0;
         const simplified = polylines.map(pl => simplify(pl, tolerance));
         
         // --- ADIM 7: CAD objeleri olarak ekle (bağlantılı polyline) ---
