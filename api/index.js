@@ -11,7 +11,7 @@ const DxfParser = require('dxf-parser');
 const zlib = require('zlib');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const Delaunator = require('delaunator');
+
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kubaj_gizli_anahtar_2024_degistirin';
 
@@ -509,6 +509,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         
         if (finalPoints.length >= 3) {
             const coords = finalPoints.map(p => [p.x, p.y]);
+            const DelaunatorModule = await import('delaunator');
+            const Delaunator = DelaunatorModule.default || DelaunatorModule;
             const delaunay = new Delaunator(coords);
             const triangles = delaunay.triangles;
             
