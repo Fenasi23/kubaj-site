@@ -152,7 +152,7 @@ const Scene = ({
     const loader = new THREE.TextureLoader();
     loader.load(backgroundImage, (tex) => {
       const ar = tex.image.width / tex.image.height;
-      setBgDimensions([1000, 1000 / ar]); 
+      setBgDimensions([1000, 1000 / ar, 1]); 
       setBgTexture(tex);
     });
   }, [backgroundImage]);
