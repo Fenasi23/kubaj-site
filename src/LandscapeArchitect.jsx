@@ -32,184 +32,236 @@ const LandscapeArchitect = () => {
     const img = new Image();
     img.crossOrigin = "Anonymous";
     img.onload = () => {
+      // UI güncellemesi için bir tick bekle, sonra ağır hesaplamaya başla
+      setTimeout(() => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         
-        // İşlem için ölçekle (performans)
-        const maxWidth = 1200;
-        const scale = Math.min(1, maxWidth / img.width);
-        const w = Math.floor(img.width * scale);
-        const h = Math.floor(img.height * scale);
+        const maxWidth = 1000;
+        const sc = Math.min(1, maxWidth / img.width);
+        const w = Math.floor(img.width * sc);
+        const h = Math.floor(img.height * sc);
         
         canvas.width = w;
         canvas.height = h;
         ctx.drawImage(img, 0, 0, w, h);
         
-        const imageData = ctx.getImageData(0, 0, w, h);
-        const data = imageData.data;
-        
-        // CAD koordinat sistemi
+        const data = ctx.getImageData(0, 0, w, h).data;
         const cadW = 1000;
         const cadH = cadW * (h / w);
         
-        // --- ADIM 1: Gri tonlama ---
-        const gray = new Float32Array(w * h);
+        // ===== ADIM 1: Gri tonlama =====
+        const gray = new Uint8Array(w * h);
         for (let i = 0; i < w * h; i++) {
-            const idx = i * 4;
-            gray[i] = 0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2];
+          const idx = i * 4;
+          gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]);
         }
         
-        // --- ADIM 2: Gauss bulanıklaştırma (gürültü azaltma) ---
-        const blurred = new Float32Array(w * h);
-        const kernel = [1,2,1, 2,4,2, 1,2,1];
-        const kSum = 16;
+        // ===== ADIM 2: Adaptif Eşikleme (Kağıt arka planını yok sayar) =====
+        // Her piksel, kendi çevresindeki ortalamaya göre değerlendirilir.
+        // Integral image ile hızlı yerel ortalama hesaplama
+        const integral = new Float64Array((w+1) * (h+1));
+        for (let y = 0; y < h; y++) {
+          let rowSum = 0;
+          for (let x = 0; x < w; x++) {
+            rowSum += gray[y * w + x];
+            integral[(y+1) * (w+1) + (x+1)] = integral[y * (w+1) + (x+1)] + rowSum;
+          }
+        }
+        
+        const binary = new Uint8Array(w * h);
+        const blockHalf = 15; // Pencere yarı boyutu (31x31 komşuluk)
+        const C = 10; // Hassasiyet: piksel yerel ortalamadan bu kadar koyu ise "çizgi"dir
+        
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const x1 = Math.max(0, x - blockHalf);
+            const y1 = Math.max(0, y - blockHalf);
+            const x2 = Math.min(w - 1, x + blockHalf);
+            const y2 = Math.min(h - 1, y + blockHalf);
+            const count = (x2 - x1 + 1) * (y2 - y1 + 1);
+            const sum = integral[(y2+1)*(w+1)+(x2+1)] - integral[y1*(w+1)+(x2+1)]
+                      - integral[(y2+1)*(w+1)+x1] + integral[y1*(w+1)+x1];
+            const mean = sum / count;
+            binary[y * w + x] = (gray[y * w + x] < mean - C) ? 1 : 0;
+          }
+        }
+        
+        // ===== ADIM 3: Gürültü Temizleme (izole pikselleri sil) =====
+        const cleaned = new Uint8Array(w * h);
         for (let y = 1; y < h-1; y++) {
-            for (let x = 1; x < w-1; x++) {
-                let sum = 0, ki = 0;
-                for (let ky = -1; ky <= 1; ky++) {
-                    for (let kx = -1; kx <= 1; kx++) {
-                        sum += gray[(y+ky)*w + (x+kx)] * kernel[ki++];
-                    }
-                }
-                blurred[y*w + x] = sum / kSum;
-            }
+          for (let x = 1; x < w-1; x++) {
+            if (binary[y*w+x] === 0) continue;
+            let nb = 0;
+            for (let dy = -1; dy <= 1; dy++)
+              for (let dx = -1; dx <= 1; dx++)
+                if (!(dy === 0 && dx === 0) && binary[(y+dy)*w+(x+dx)] === 1) nb++;
+            cleaned[y*w+x] = nb >= 1 ? 1 : 0;
+          }
         }
         
-        // --- ADIM 3: Sobel kenar algılama ---
-        const edges = new Float32Array(w * h);
-        let maxEdge = 0;
-        for (let y = 1; y < h-1; y++) {
+        // ===== ADIM 4: Zhang-Suen İskelet İncelme =====
+        // Kalın çizgileri tek piksel genişliğine indirir
+        const skel = new Uint8Array(cleaned);
+        
+        const getN = (x, y) => [
+          skel[(y-1)*w+x],     // P2 (kuzey)
+          skel[(y-1)*w+(x+1)], // P3
+          skel[y*w+(x+1)],     // P4 (doğu)
+          skel[(y+1)*w+(x+1)], // P5
+          skel[(y+1)*w+x],     // P6 (güney)
+          skel[(y+1)*w+(x-1)], // P7
+          skel[y*w+(x-1)],     // P8 (batı)
+          skel[(y-1)*w+(x-1)]  // P9
+        ];
+        
+        const transitions = (n) => {
+          let c = 0;
+          for (let i = 0; i < 8; i++) if (n[i] === 0 && n[(i+1)%8] === 1) c++;
+          return c;
+        };
+        
+        const sumArr = (n) => n.reduce((a, b) => a + b, 0);
+        
+        let changed = true;
+        let maxIter = 50; // Sonsuz döngüyü engelle
+        while (changed && maxIter-- > 0) {
+          changed = false;
+          
+          // Alt-iterasyon 1
+          const rem1 = [];
+          for (let y = 1; y < h-1; y++) {
             for (let x = 1; x < w-1; x++) {
-                const gx = -blurred[(y-1)*w+(x-1)] + blurred[(y-1)*w+(x+1)]
-                         - 2*blurred[y*w+(x-1)] + 2*blurred[y*w+(x+1)]
-                         - blurred[(y+1)*w+(x-1)] + blurred[(y+1)*w+(x+1)];
-                const gy = -blurred[(y-1)*w+(x-1)] - 2*blurred[(y-1)*w+x] - blurred[(y-1)*w+(x+1)]
-                         + blurred[(y+1)*w+(x-1)] + 2*blurred[(y+1)*w+x] + blurred[(y+1)*w+(x+1)];
-                edges[y*w+x] = Math.sqrt(gx*gx + gy*gy);
-                if (edges[y*w+x] > maxEdge) maxEdge = edges[y*w+x];
+              if (skel[y*w+x] === 0) continue;
+              const n = getN(x, y);
+              const B = sumArr(n);
+              if (B < 2 || B > 6) continue;
+              if (transitions(n) !== 1) continue;
+              if (n[0]*n[2]*n[4] !== 0) continue; // P2*P4*P6
+              if (n[2]*n[4]*n[6] !== 0) continue; // P4*P6*P8
+              rem1.push(y*w+x);
             }
+          }
+          for (const idx of rem1) { skel[idx] = 0; changed = true; }
+          
+          // Alt-iterasyon 2
+          const rem2 = [];
+          for (let y = 1; y < h-1; y++) {
+            for (let x = 1; x < w-1; x++) {
+              if (skel[y*w+x] === 0) continue;
+              const n = getN(x, y);
+              const B = sumArr(n);
+              if (B < 2 || B > 6) continue;
+              if (transitions(n) !== 1) continue;
+              if (n[0]*n[2]*n[6] !== 0) continue; // P2*P4*P8
+              if (n[0]*n[4]*n[6] !== 0) continue; // P2*P6*P8
+              rem2.push(y*w+x);
+            }
+          }
+          for (const idx of rem2) { skel[idx] = 0; changed = true; }
         }
         
-        // --- ADIM 4: Eşikleme ve kenar noktalarını toplama ---
-        const threshold = maxEdge * 0.06;
-        const step = 2;
+        // ===== ADIM 5: İskelet Üzerinde Zincir Takibi =====
         const edgePoints = [];
-        
-        for (let y = step; y < h-step; y += step) {
-            for (let x = step; x < w-step; x += step) {
-                if (edges[y*w+x] > threshold) {
-                    edgePoints.push({
-                        px: x, py: y,
-                        cadX: (x / w) * cadW - (cadW / 2),
-                        cadY: -((y / h) * cadH - (cadH / 2))
-                    });
-                }
+        for (let y = 1; y < h-1; y++) {
+          for (let x = 1; x < w-1; x++) {
+            if (skel[y*w+x] === 1) {
+              edgePoints.push({
+                px: x, py: y,
+                cadX: (x / w) * cadW - (cadW / 2),
+                cadY: -((y / h) * cadH - (cadH / 2))
+              });
             }
+          }
         }
         
-        // --- ADIM 5: Yakın kenar noktalarını zincir halinde bağla (Polyline oluştur) ---
         const used = new Set();
         const polylines = [];
-        const maxDist = step * 2.5;
+        const maxChainDist = 3;
         
-        // Uzamsal dizin (grid-tabanlı hızlı arama)
-        const gridSize = Math.ceil(maxDist);
+        // Grid-tabanlı hızlı arama
+        const gs = 4;
         const grid = {};
-        
         edgePoints.forEach((p, i) => {
-            const gx = Math.floor(p.px / gridSize);
-            const gy = Math.floor(p.py / gridSize);
-            const key = `${gx},${gy}`;
-            if (!grid[key]) grid[key] = [];
-            grid[key].push(i);
+          const key = `${Math.floor(p.px/gs)},${Math.floor(p.py/gs)}`;
+          if (!grid[key]) grid[key] = [];
+          grid[key].push(i);
         });
         
-        const findNearest = (px, py, chainSet) => {
-            const gx = Math.floor(px / gridSize);
-            const gy = Math.floor(py / gridSize);
-            let bestIdx = -1;
-            let bestDist = maxDist * maxDist;
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    const key = `${gx+dx},${gy+dy}`;
-                    const cell = grid[key];
-                    if (!cell) continue;
-                    for (const idx of cell) {
-                        if (used.has(idx) || chainSet.has(idx)) continue;
-                        const d = (edgePoints[idx].px - px)**2 + (edgePoints[idx].py - py)**2;
-                        if (d < bestDist) {
-                            bestDist = d;
-                            bestIdx = idx;
-                        }
-                    }
-                }
+        const findNext = (px, py, exc) => {
+          const gx = Math.floor(px / gs), gy = Math.floor(py / gs);
+          let best = -1, bestD = maxChainDist * maxChainDist;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const cell = grid[`${gx+dx},${gy+dy}`];
+              if (!cell) continue;
+              for (const idx of cell) {
+                if (used.has(idx) || exc.has(idx)) continue;
+                const d = (edgePoints[idx].px-px)**2 + (edgePoints[idx].py-py)**2;
+                if (d < bestD) { bestD = d; best = idx; }
+              }
             }
-            return bestIdx;
+          }
+          return best;
         };
         
         for (let i = 0; i < edgePoints.length; i++) {
-            if (used.has(i)) continue;
-            used.add(i);
-            const chain = [edgePoints[i]];
-            const chainSet = new Set([i]);
-            
-            // Zinciri ileri doğru takip et
-            let current = edgePoints[i];
-            while (true) {
-                const next = findNearest(current.px, current.py, chainSet);
-                if (next === -1) break;
-                used.add(next);
-                chainSet.add(next);
-                chain.push(edgePoints[next]);
-                current = edgePoints[next];
-            }
-            
-            if (chain.length >= 2) {
-                polylines.push(chain);
-            }
+          if (used.has(i)) continue;
+          used.add(i);
+          const chain = [edgePoints[i]];
+          const cSet = new Set([i]);
+          let cur = edgePoints[i];
+          while (true) {
+            const nx = findNext(cur.px, cur.py, cSet);
+            if (nx === -1) break;
+            used.add(nx); cSet.add(nx);
+            chain.push(edgePoints[nx]);
+            cur = edgePoints[nx];
+          }
+          if (chain.length >= 5) polylines.push(chain);
         }
         
-        // --- ADIM 6: Douglas-Peucker sadeleştirme ---
-        const ptLineDist = (p, a, b) => {
-            const dx = b.cadX - a.cadX, dy = b.cadY - a.cadY;
-            const lenSq = dx*dx + dy*dy;
-            if (lenSq === 0) return Math.sqrt((p.cadX-a.cadX)**2 + (p.cadY-a.cadY)**2);
-            const t = Math.max(0, Math.min(1, ((p.cadX-a.cadX)*dx + (p.cadY-a.cadY)*dy) / lenSq));
-            return Math.sqrt((p.cadX - (a.cadX + t*dx))**2 + (p.cadY - (a.cadY + t*dy))**2);
+        // ===== ADIM 6: Douglas-Peucker Sadeleştirme =====
+        const ptDist = (p, a, b) => {
+          const dx = b.cadX-a.cadX, dy = b.cadY-a.cadY;
+          const len2 = dx*dx+dy*dy;
+          if (len2 === 0) return Math.hypot(p.cadX-a.cadX, p.cadY-a.cadY);
+          const t = Math.max(0, Math.min(1, ((p.cadX-a.cadX)*dx+(p.cadY-a.cadY)*dy)/len2));
+          return Math.hypot(p.cadX-(a.cadX+t*dx), p.cadY-(a.cadY+t*dy));
         };
         
         const simplify = (pts, tol) => {
-            if (pts.length <= 2) return pts;
-            let maxD = 0, maxI = 0;
-            for (let i = 1; i < pts.length - 1; i++) {
-                const d = ptLineDist(pts[i], pts[0], pts[pts.length-1]);
-                if (d > maxD) { maxD = d; maxI = i; }
-            }
-            if (maxD > tol) {
-                const left = simplify(pts.slice(0, maxI+1), tol);
-                const right = simplify(pts.slice(maxI), tol);
-                return left.slice(0, -1).concat(right);
-            }
-            return [pts[0], pts[pts.length-1]];
+          if (pts.length <= 2) return pts;
+          let mxD = 0, mxI = 0;
+          for (let i = 1; i < pts.length-1; i++) {
+            const d = ptDist(pts[i], pts[0], pts[pts.length-1]);
+            if (d > mxD) { mxD = d; mxI = i; }
+          }
+          if (mxD > tol) {
+            const l = simplify(pts.slice(0, mxI+1), tol);
+            const r = simplify(pts.slice(mxI), tol);
+            return l.slice(0,-1).concat(r);
+          }
+          return [pts[0], pts[pts.length-1]];
         };
         
-        const tolerance = 1.0;
-        const simplified = polylines.map(pl => simplify(pl, tolerance));
+        const result = polylines.map(pl => simplify(pl, 1.5));
         
-        // --- ADIM 7: CAD objeleri olarak ekle (bağlantılı polyline) ---
-        if (simplified.length > 0) {
-            const newEntities = simplified.map(pl => ({
-                id: Date.now() + '_' + Math.random().toString(36).substr(2),
-                type: 'line',
-                points: pl.map(p => ({ x: Number(p.cadX.toFixed(2)), y: Number(p.cadY.toFixed(2)) })),
-                layerId: '0',
-                color: '#facc15'
-            }));
-            setCadEntities(prev => [...prev, ...newEntities]);
+        // ===== ADIM 7: CAD Objeleri Olarak Ekle =====
+        if (result.length > 0) {
+          const ents = result.map(pl => ({
+            id: Date.now() + '_' + Math.random().toString(36).substr(2),
+            type: 'line',
+            points: pl.map(p => ({ x: +p.cadX.toFixed(2), y: +p.cadY.toFixed(2) })),
+            layerId: '0',
+            color: '#facc15'
+          }));
+          setCadEntities(prev => [...prev, ...ents]);
         } else {
-            alert("Çizim algılanamadı. Lütfen daha belirgin hatları olan bir eskiz yükleyin.");
+          alert("Çizim algılanamadı. Lütfen daha belirgin hatları olan bir eskiz yükleyin.");
         }
         setIsTracing(false);
+      }, 50);
     };
     img.src = sketchImage;
   };
