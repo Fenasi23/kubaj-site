@@ -57,21 +57,34 @@ const LandscapeArchitect = () => {
           gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]);
         }
         
-        // ===== ADIM 2: Adaptif Eşikleme (Kağıt arka planını yok sayar) =====
-        // Her piksel, kendi çevresindeki ortalamaya göre değerlendirilir.
-        // Integral image ile hızlı yerel ortalama hesaplama
+        // ===== ADIM 1.5: Gauss Bulanıklaştırma (kağıt dokusunu yok et) =====
+        const blurred = new Uint8Array(w * h);
+        for (let y = 2; y < h-2; y++) {
+          for (let x = 2; x < w-2; x++) {
+            let sum = 0, cnt = 0;
+            for (let ky = -2; ky <= 2; ky++) {
+              for (let kx = -2; kx <= 2; kx++) {
+                sum += gray[(y+ky)*w + (x+kx)];
+                cnt++;
+              }
+            }
+            blurred[y*w+x] = Math.round(sum / cnt);
+          }
+        }
+        
+        // ===== ADIM 2: Adaptif Eşikleme =====
         const integral = new Float64Array((w+1) * (h+1));
         for (let y = 0; y < h; y++) {
           let rowSum = 0;
           for (let x = 0; x < w; x++) {
-            rowSum += gray[y * w + x];
+            rowSum += blurred[y * w + x];
             integral[(y+1) * (w+1) + (x+1)] = integral[y * (w+1) + (x+1)] + rowSum;
           }
         }
         
         const binary = new Uint8Array(w * h);
-        const blockHalf = 15; // Pencere yarı boyutu (31x31 komşuluk)
-        const C = 10; // Hassasiyet: piksel yerel ortalamadan bu kadar koyu ise "çizgi"dir
+        const blockHalf = 25; // Daha geniş pencere (51x51)
+        const C = 25; // Çok daha katı: sadece gerçek kalem çizgileri geçer
         
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
@@ -83,11 +96,11 @@ const LandscapeArchitect = () => {
             const sum = integral[(y2+1)*(w+1)+(x2+1)] - integral[y1*(w+1)+(x2+1)]
                       - integral[(y2+1)*(w+1)+x1] + integral[y1*(w+1)+x1];
             const mean = sum / count;
-            binary[y * w + x] = (gray[y * w + x] < mean - C) ? 1 : 0;
+            binary[y * w + x] = (blurred[y * w + x] < mean - C) ? 1 : 0;
           }
         }
         
-        // ===== ADIM 3: Gürültü Temizleme (izole pikselleri sil) =====
+        // ===== ADIM 3: Güçlü Gürültü Temizleme =====
         const cleaned = new Uint8Array(w * h);
         for (let y = 1; y < h-1; y++) {
           for (let x = 1; x < w-1; x++) {
@@ -96,7 +109,7 @@ const LandscapeArchitect = () => {
             for (let dy = -1; dy <= 1; dy++)
               for (let dx = -1; dx <= 1; dx++)
                 if (!(dy === 0 && dx === 0) && binary[(y+dy)*w+(x+dx)] === 1) nb++;
-            cleaned[y*w+x] = nb >= 1 ? 1 : 0;
+            cleaned[y*w+x] = nb >= 3 ? 1 : 0; // En az 3 komşu gerekli
           }
         }
         
@@ -218,7 +231,7 @@ const LandscapeArchitect = () => {
             chain.push(edgePoints[nx]);
             cur = edgePoints[nx];
           }
-          if (chain.length >= 5) polylines.push(chain);
+          if (chain.length >= 10) polylines.push(chain); // Kısa gürültü zincirlerini at
         }
         
         // ===== ADIM 6: Douglas-Peucker Sadeleştirme =====
