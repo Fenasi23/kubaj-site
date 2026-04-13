@@ -75,31 +75,32 @@ const EntityRenderer = ({ entities, layers }) => {
         }
         if (ent.type === 'landscape') {
           // Özel peyzaj objeleri ( Havuz, Park vb.)
-          const scale = ent.scale || 1;
+          const w = ent.w || 10;
+          const h = ent.h || 10;
           const rotation = ent.rotation || 0;
           return (
             <group key={`ent-${idx}`} position={[ent.x, ent.y, 0.1]} rotation={[0, 0, rotation]}>
               {ent.subType === 'pool' && (
                 <mesh>
-                  <circleGeometry args={[5 * scale, 32]} />
+                  <circleGeometry args={[w / 2, 32]} />
                   <meshBasicMaterial color="#0ea5e9" transparent opacity={0.6} />
                 </mesh>
               )}
               {ent.subType === 'park' && (
                 <mesh>
-                  <boxGeometry args={[10 * scale, 10 * scale, 0.1]} />
+                  <boxGeometry args={[w, h, 0.1]} />
                   <meshBasicMaterial color="#22c55e" transparent opacity={0.5} />
                 </mesh>
               )}
               {ent.subType === 'court' && (
                 <mesh>
-                  <boxGeometry args={[12 * scale, 24 * scale, 0.1]} />
+                  <boxGeometry args={[w, h, 0.1]} />
                   <meshBasicMaterial color="#f87171" transparent opacity={0.5} />
                 </mesh>
               )}
               {ent.subType === 'cafe' && (
                 <mesh>
-                  <boxGeometry args={[8 * scale, 8 * scale, 0.1]} />
+                  <boxGeometry args={[w, h, 0.1]} />
                   <meshBasicMaterial color="#f59e0b" transparent opacity={0.7} />
                 </mesh>
               )}
@@ -140,10 +141,20 @@ const Scene = ({
   const [snappedPoint, setSnappedPoint] = useState(null);
   const [cursorCoords, setCursorCoords] = useState({ x: 0, y: 0 });
 
-  const bgTexture = useMemo(() => {
-    if (!backgroundImage) return null;
+  const [bgTexture, setBgTexture] = useState(null);
+  const [bgDimensions, setBgDimensions] = useState([1000, 1000]);
+
+  useEffect(() => {
+    if (!backgroundImage) {
+      setBgTexture(null);
+      return;
+    }
     const loader = new THREE.TextureLoader();
-    return loader.load(backgroundImage);
+    loader.load(backgroundImage, (tex) => {
+      const ar = tex.image.width / tex.image.height;
+      setBgDimensions([1000, 1000 / ar]); 
+      setBgTexture(tex);
+    });
   }, [backgroundImage]);
 
   const handlePointerMove = (e) => {
@@ -194,7 +205,7 @@ const Scene = ({
       
       {/* Background Image (Eskiz) */}
       {bgTexture && (
-        <mesh position={[0, 0, -1]} scale={[100, 100, 1]}>
+        <mesh position={[0, 0, -1]} scale={bgDimensions}>
           <planeGeometry />
           <meshBasicMaterial map={bgTexture} transparent opacity={bgOpacity} />
         </mesh>
@@ -235,7 +246,7 @@ const Scene = ({
   );
 };
 
-const WebCAD = ({ initialEntities = [], initialLayers = [], onSave, backgroundImage, onPointSelected }) => {
+const WebCAD = ({ initialEntities = [], initialLayers = [], onSave, backgroundImage, onPointSelected, placementMode, onPlacementComplete }) => {
   const [entities, setEntities] = useState(initialEntities);
   const [layers, setLayers] = useState(initialLayers.length > 0 ? initialLayers : [
     { id: '0', name: '0 (Ana Tabaka)', color: '#ffffff', visible: true, locked: false }
@@ -256,6 +267,19 @@ const WebCAD = ({ initialEntities = [], initialLayers = [], onSave, backgroundIm
   const handlePointAdded = (coords) => {
     const activeLayer = layers.find(l => l.id === activeLayerId);
     if (activeLayer?.locked) return;
+    
+    // Eğer dışarıdan "Yerleştirme Modu" (ör: Havuz Ekleme) açıksa
+    if (placementMode && onPlacementComplete) {
+      const placedEnt = {
+        ...placementMode,
+        x: coords.x,
+        y: coords.y,
+        layerId: activeLayerId,
+        color: activeLayer.color || placementMode.color
+      };
+      onPlacementComplete(placedEnt);
+      return;
+    }
 
     if (activeTool === 'point') {
       setEntities(prev => [...prev, { 
@@ -409,20 +433,21 @@ const WebCAD = ({ initialEntities = [], initialLayers = [], onSave, backgroundIm
           }
         } else if (ent.type === 'landscape') {
           // Peyzaj objelerini DXF'e dikdörtgen veya daire olarak aktar
-          const scale = ent.scale || 1;
+          const w = ent.w || 10;
+          const h = ent.h || 10;
           if (ent.subType === 'pool') {
              // Çember olarak ekle (DXF circle)
-             dxf.addCircle(ent.x, ent.y, 5 * scale, { layerName });
+             dxf.addCircle(ent.x, ent.y, w / 2, { layerName });
           } else {
              // Diğerlerini kapalı kare/dikdörtgen olarak ekle
-             const size = (ent.subType === 'park' ? 10 : ent.subType === 'court' ? 24 : 8) * scale;
-             const s2 = size / 2;
+             const w2 = w / 2;
+             const h2 = h / 2;
              dxf.addPolyline([
-               [ent.x - s2, ent.y - s2, 0],
-               [ent.x + s2, ent.y - s2, 0],
-               [ent.x + s2, ent.y + s2, 0],
-               [ent.x - s2, ent.y + s2, 0],
-               [ent.x - s2, ent.y - s2, 0]
+               [ent.x - w2, ent.y - h2, 0],
+               [ent.x + w2, ent.y - h2, 0],
+               [ent.x + w2, ent.y + h2, 0],
+               [ent.x - w2, ent.y + h2, 0],
+               [ent.x - w2, ent.y - h2, 0]
              ], { layerName, closed: true });
           }
         } else if (ent.type === 'trace') {

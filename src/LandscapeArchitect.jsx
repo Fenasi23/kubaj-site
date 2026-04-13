@@ -14,6 +14,16 @@ const LandscapeArchitect = () => {
   const [cadEntities, setCadEntities] = useState([]);
   const [activeTool, setActiveTool] = useState('none');
   const [isTracing, setIsTracing] = useState(false);
+  const [placementMode, setPlacementMode] = useState(null); // Yeni eklenti
+
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape') setPlacementMode(null);
+  }, []);
+  
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   const handleAutoTrace = () => {
     if (!sketchImage) return alert("Önce bir eskiz yükleyin.");
@@ -41,7 +51,7 @@ const LandscapeArchitect = () => {
         const step = 3; // Çözünürlüğü biraz artırdık
         
         // Aspect ratio'ya göre CAD koordinatları
-        const cadW = 500; 
+        const cadW = 1000; // Artırdık ki keskinlik artsın
         const cadH = cadW * (h / w);
         
         const lines = [];
@@ -100,19 +110,25 @@ const LandscapeArchitect = () => {
     }
   };
 
-  const addLandscapeObject = (type) => {
-    // Merkezi konuma (0,0) geçici bir obje ekle
-    const newObj = {
+  const addLandscapeObject = (subType) => {
+    const w = prompt('Lütfen projedeki En/Genişlik ölçüsünü (metre cinsinden) girin:', '10');
+    if (!w) return;
+    
+    let h = w;
+    if (subType !== 'pool') {
+      const respH = prompt('Lütfen projedeki Boy/Yükseklik ölçüsünü (metre cinsinden) girin:', '10');
+      if (!respH) return;
+      h = respH;
+    }
+    
+    setPlacementMode({ 
       id: Date.now().toString(),
-      type: 'landscape',
-      subType: type,
-      x: 0,
-      y: 0,
-      scale: 1,
-      rotation: 0,
-      layerId: 'landscape'
-    };
-    setCadEntities(prev => [...prev, newObj]);
+      type: 'landscape', 
+      subType, 
+      w: parseFloat(w), 
+      h: parseFloat(h),
+      layerId: 'landscape' 
+    });
   };
 
   const landscapeTools = [
@@ -191,11 +207,21 @@ const LandscapeArchitect = () => {
         </section>
       </div>
 
-      <div className="landscape-main-viewport">
+      <div className="landscape-main-viewport" style={{ position: 'relative' }}>
+        {placementMode && (
+          <div style={{ position: 'absolute', top: 20, zIndex: 1000, background: 'var(--primary-color)', color: 'white', padding: '10px 20px', borderRadius: '20px', left: '50%', transform: 'translateX(-50%)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', fontWeight: 'bold' }}>
+            📍 Yerleştirmek için plana tıklayın (İptal etmek için ESC)
+          </div>
+        )}
         <WebCAD 
           initialEntities={cadEntities}
           backgroundImage={sketchImage}
           onSave={data => setCadEntities(data.entities)}
+          placementMode={placementMode}
+          onPlacementComplete={(newEnt) => {
+            setCadEntities(prev => [...prev, newEnt]);
+            setPlacementMode(null);
+          }}
         />
       </div>
 
