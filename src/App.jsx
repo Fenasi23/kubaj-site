@@ -687,7 +687,7 @@ function App() {
         const resp = await axios.get(`${API_URL}/api/firms`);
         setFirms(resp.data);
         const savedFirmId = localStorage.getItem('selectedFirmId');
-        const active = resp.data.find(f => f.id === savedFirmId);
+        const active = resp.data.find(f => (f.id || f._id) === savedFirmId);
         if (active) {
           setSelectedFirm(active);
         } else {
@@ -1150,35 +1150,7 @@ function App() {
     }
   };
 
-  // İŞ İŞLEMLERİ
-  const handleAddProject = async (firmId) => {
-    const pName = prompt("Yeni İş Adı Giriniz:");
-    if (!pName) return;
-    try {
-      const trimmedName = pName.trim();
-      await axios.post(`${API_URL}/api/hakedis`, { details: {}, data: [] }, {
-        headers: { 'x-firm-id': firmId, 'x-job-name': encodeURIComponent(trimmedName) }
-      });
-      // Listeyi tazele
-      const r = await axios.get(`${API_URL}/api/firms/${firmId}/projects`);
-      setProjects(r.data);
-      setSelectedProject(trimmedName);
-    } catch (err) {
-      alert("İş eklenemedi.");
-    }
-  };
 
-  const handleDeleteProject = async (firmId, projectName) => {
-    if (!confirm(`"${projectName}" işini ve tüm verilerini silmek istediğinize emin misiniz?`)) return;
-    try {
-      await axios.delete(`${API_URL}/api/firms/${firmId}/projects/${encodeURIComponent(projectName)}`);
-      const r = await axios.get(`${API_URL}/api/firms/${firmId}/projects`);
-      setProjects(r.data);
-      if (selectedProject === projectName) setSelectedProject('');
-    } catch (err) {
-      alert("İş silinemedi.");
-    }
-  };
 
   const handleDownloadSummaryPdf = async () => {
     try {

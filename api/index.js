@@ -52,21 +52,21 @@ app.use(async (req, res, next) => {
 });
 
 // Veritabanı Şemaları
-const FirmSchema = new mongoose.Schema({ 
+const FirmSchema = new mongoose.Schema({
     name: String, 
     createdAt: { type: Date, default: Date.now } 
-}, { toJSON: { virtuals: true }, toObject: { virtuals: true } });
+}, { toJSON: { virtuals: true, versionKey: false, transform: (doc, ret) => { ret.id = ret._id; } }, toObject: { virtuals: true, versionKey: false, transform: (doc, ret) => { ret.id = ret._id; } } });
 
 const Firm = mongoose.models.Firm || mongoose.model('Firm', FirmSchema);
 
 const ProjectSchema = new mongoose.Schema({
     firmId: String,
     jobName: String,
-    kubajData: Object,
-    hakedisData: Object,
+    kubajData: { type: Object, default: { points: [], results: null } },
+    hakedisData: { type: Object, default: { details: {}, data: [] } },
     cadData: { type: Object, default: { entities: [], layers: [] } },
     updatedAt: { type: Date, default: Date.now }
-}, { toJSON: { virtuals: true }, toObject: { virtuals: true } });
+}, { toJSON: { virtuals: true, versionKey: false, transform: (doc, ret) => { ret.id = ret._id; } }, toObject: { virtuals: true, versionKey: false, transform: (doc, ret) => { ret.id = ret._id; } } });
 
 const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);
 
@@ -222,7 +222,14 @@ app.post('/api/firms', async (req, res) => {
         const newFirm = new Firm({ name: req.body.name });
         await newFirm.save();
         res.json(newFirm);
-    } catch (err) { res.status(500).json({ error: 'Sunucu hatası', message: err.message }); }
+    } catch (err) { 
+        console.error("Firma Ekleme Hatası:", err);
+        res.status(500).json({ 
+            error: 'Sunucu hatası veya Veritabanı bağlantısı kurulamadı.', 
+            message: err.message,
+            hint: 'Eğer bu hata devam ediyorsa MongoDB Atlas IP Beyaz Listesini (0.0.0.0/0) kontrol edin.'
+        }); 
+    }
 });
 
 app.delete('/api/firms/:id', async (req, res) => {
