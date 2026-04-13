@@ -922,15 +922,14 @@ app.post('/api/trace-image', async (req, res) => {
         const base64 = imageData.replace(/^data:image\/\w+;base64,/, '');
         const buffer = Buffer.from(base64, 'base64');
 
-        // Potrace ile vektöre dönüştür
         const params = {
-            turdSize: 5,        // Küçük gürültü noktalarını yok say
+            turdSize: 15,       // Küçülek gürültüleri filtrele
             turnPolicy: potrace.Potrace.TURNPOLICY_MINORITY,
-            alphaMax: 1.0,      // Köşe yumuşatma (1.0 = hafif yumuşak)
-            optCurve: true,     // Eğri optimizasyonu
-            optTolerance: 0.2,  // Eğri hassasiyeti
-            threshold: potrace.Potrace.THRESHOLD_AUTO, // Otomatik eşikleme
-            blackOnWhite: true  // Beyaz kağıt üzerinde siyah çizgi
+            alphaMax: 1.0, 
+            optCurve: true,
+            optTolerance: 0.2,
+            threshold: potrace.Potrace.THRESHOLD_AUTO,
+            blackOnWhite: true
         };
 
         potrace.trace(buffer, params, (err, svg) => {
@@ -943,10 +942,10 @@ app.post('/api/trace-image', async (req, res) => {
 
             while ((match = pathRegex.exec(svg)) !== null) {
                 const d = match[1];
-                const points = parseSVGPath(d);
-                if (points.length >= 2) {
-                    polylines.push(points);
-                }
+                const subPolylines = parseSVGPath(d); // Artık bir dizi polyline döner
+                subPolylines.forEach(pl => {
+                    if (pl.length >= 2) polylines.push(pl);
+                });
             }
 
             // SVG viewport boyutunu bul
@@ -972,8 +971,11 @@ app.post('/api/trace-image', async (req, res) => {
 });
 
 // SVG Path "d" attribute parser (M, L, C, Z komutları)
+// Her 'M' komutu yeni bir polyline (sub-path) başlatır
 function parseSVGPath(d) {
-    const points = [];
+    const polylines = [];
+    let currentPolyline = [];
+    
     const commands = d.match(/[MLCSQTAZmlcsqtaz][^MLCSQTAZmlcsqtaz]*/g) || [];
     let cx = 0, cy = 0; // current position
 
@@ -982,47 +984,47 @@ function parseSVGPath(d) {
         const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
 
         switch (type) {
-            case 'M': // Mutlak MoveTo
+            case 'M': // Mutlak MoveTo -> YENİ POLYLINE
+                if (currentPolyline.length >= 2) polylines.push(currentPolyline);
                 cx = nums[0]; cy = nums[1];
-                points.push({ x: cx, y: cy });
-                // M komutu sonrası gelen çift sayılar implicit LineTo
+                currentPolyline = [{ x: cx, y: cy }];
                 for (let i = 2; i < nums.length; i += 2) {
                     cx = nums[i]; cy = nums[i+1];
-                    points.push({ x: cx, y: cy });
+                    currentPolyline.push({ x: cx, y: cy });
                 }
                 break;
-            case 'm': // Göreli MoveTo
+            case 'm': // Göreli MoveTo -> YENİ POLYLINE
+                if (currentPolyline.length >= 2) polylines.push(currentPolyline);
                 cx += nums[0]; cy += nums[1];
-                points.push({ x: cx, y: cy });
+                currentPolyline = [{ x: cx, y: cy }];
                 for (let i = 2; i < nums.length; i += 2) {
                     cx += nums[i]; cy += nums[i+1];
-                    points.push({ x: cx, y: cy });
+                    currentPolyline.push({ x: cx, y: cy });
                 }
                 break;
             case 'L': // Mutlak LineTo
                 for (let i = 0; i < nums.length; i += 2) {
                     cx = nums[i]; cy = nums[i+1];
-                    points.push({ x: cx, y: cy });
+                    currentPolyline.push({ x: cx, y: cy });
                 }
                 break;
             case 'l': // Göreli LineTo
                 for (let i = 0; i < nums.length; i += 2) {
                     cx += nums[i]; cy += nums[i+1];
-                    points.push({ x: cx, y: cy });
+                    currentPolyline.push({ x: cx, y: cy });
                 }
                 break;
-            case 'C': // Mutlak Cubic Bezier → Düzleştir
+            case 'C': // Mutlak Cubic Bezier
                 for (let i = 0; i < nums.length; i += 6) {
-                    // Bezier'i 4 noktaya bölüp düzleştir
                     const x0 = cx, y0 = cy;
                     const x1 = nums[i], y1 = nums[i+1];
                     const x2 = nums[i+2], y2 = nums[i+3];
                     const x3 = nums[i+4], y3 = nums[i+5];
-                    for (let t = 0.25; t <= 1; t += 0.25) {
+                    for (let t = 0.2; t <= 1; t += 0.2) {
                         const mt = 1 - t;
                         const px = mt*mt*mt*x0 + 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t*x3;
                         const py = mt*mt*mt*y0 + 3*mt*mt*t*y1 + 3*mt*t*t*y2 + t*t*t*y3;
-                        points.push({ x: px, y: py });
+                        currentPolyline.push({ x: px, y: py });
                     }
                     cx = x3; cy = y3;
                 }
@@ -1033,24 +1035,25 @@ function parseSVGPath(d) {
                     const x1 = cx+nums[i], y1 = cy+nums[i+1];
                     const x2 = cx+nums[i+2], y2 = cy+nums[i+3];
                     const x3 = cx+nums[i+4], y3 = cy+nums[i+5];
-                    for (let t = 0.25; t <= 1; t += 0.25) {
+                    for (let t = 0.2; t <= 1; t += 0.2) {
                         const mt = 1 - t;
-                        const px = mt*mt*mt*x0 + 3*mt*mt*t*x1 + 3*mt*t*t*y2 + t*t*t*x3;
+                        const px = mt*mt*mt*x0 + 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t*x3;
                         const py = mt*mt*mt*y0 + 3*mt*mt*t*y1 + 3*mt*t*t*y2 + t*t*t*y3;
-                        points.push({ x: px, y: py });
+                        currentPolyline.push({ x: px, y: py });
                     }
                     cx = x3; cy = y3;
                 }
                 break;
             case 'Z':
             case 'z':
-                if (points.length > 0) {
-                    points.push({ x: points[0].x, y: points[0].y }); // Kapalı path
+                if (currentPolyline.length > 0) {
+                    currentPolyline.push({ x: currentPolyline[0].x, y: currentPolyline[0].y });
                 }
                 break;
         }
     }
-    return points;
+    if (currentPolyline.length >= 2) polylines.push(currentPolyline);
+    return polylines;
 }
 
 
