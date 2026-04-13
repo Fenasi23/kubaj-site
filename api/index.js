@@ -511,7 +511,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const coords = finalPoints.map(p => [p.x, p.y]);
             const DelaunatorModule = await import('delaunator');
             const Delaunator = DelaunatorModule.default || DelaunatorModule;
-            const delaunay = new Delaunator(coords);
+            const delaunay = Delaunator.from(coords);
             const triangles = delaunay.triangles;
             
             for (let i = 0; i < triangles.length; i += 3) {
