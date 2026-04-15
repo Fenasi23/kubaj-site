@@ -2174,21 +2174,47 @@ function App() {
                         <th>Dolgu Hacmi</th>
                         <th>Net Hacim</th>
                         <th>Son Güncelleme</th>
+                        <th style={{ textAlign: 'center' }}>İşlemler</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredArchives.map((proj, idx) => (
                         <tr key={idx}>
-                          <td style={{ fontWeight: 600 }}>{proj.firmName}</td>
-                          <td>{proj.jobName}</td>
+                          <td style={{ fontWeight: 600, color: 'var(--primary-color)' }}>{proj.firmName}</td>
+                          <td style={{ fontWeight: 600 }}>{proj.jobName}</td>
                           <td style={{ color: 'var(--error-color)' }}>{(proj.kubaj?.cutVolume || 0).toLocaleString('tr-TR')} m³</td>
                           <td style={{ color: 'var(--accent-color)' }}>{(proj.kubaj?.fillVolume || 0).toLocaleString('tr-TR')} m³</td>
-                          <td style={{ fontWeight: 700, color: 'var(--primary-color)' }}>{(proj.kubaj?.totalVolume || 0).toLocaleString('tr-TR')} m³</td>
+                          <td style={{ fontWeight: 800 }}>{(proj.kubaj?.totalVolume || 0).toLocaleString('tr-TR')} m³</td>
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(proj.updatedAt).toLocaleDateString('tr-TR')}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                              <button 
+                                className="btn-icon-small" 
+                                style={{ color: 'var(--primary-color)' }}
+                                title="Detayları Görüntüle"
+                                onClick={() => {
+                                  const firm = firms.find(f => f.id === proj.firmId || f._id === proj.firmId);
+                                  if (firm) setSelectedFirm(firm);
+                                  setSelectedProject(proj.jobName);
+                                  setActiveModule('kubaj');
+                                }}
+                              >
+                                <ChevronRight size={18} />
+                              </button>
+                              <button 
+                                className="btn-icon-small" 
+                                style={{ color: 'var(--error-color)' }}
+                                title="Projeyi Sil"
+                                onClick={() => handleDeleteArchiveProject(proj.firmId, proj.jobName)}
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                       {filteredArchives.length === 0 && (
-                        <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>{archiveProjects.length === 0 ? 'Henüz kaydedilmiş bir proje bulunmuyor.' : 'Aramanızla eşleşen proje bulunamadı.'}</td></tr>
+                        <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>{archiveProjects.length === 0 ? 'Henüz kaydedilmiş bir proje bulunmuyor.' : 'Aramanızla eşleşen proje bulunamadı.'}</td></tr>
                       )}
                     </tbody>
                   </table>
