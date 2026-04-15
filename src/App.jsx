@@ -127,23 +127,41 @@ function Excavation3D({ points }) {
     const indices = delaunay.triangles;
 
     // Build Geometries
-    const buildGeometry = (zField) => {
+    const buildGeometry = (zField, useColors = false) => {
       const positions = new Float32Array(points.length * 3);
+      const colors = useColors ? new Float32Array(points.length * 3) : null;
+
       points.forEach((p, i) => {
         positions[i * 3] = (p.x - center.x) * factor;
         positions[i * 3 + 1] = (p.y - center.y) * factor;
         positions[i * 3 + 2] = (p[zField] - minZ) * 2; // Z scale
+        
+        if (useColors) {
+           const zm = p.z_mevcut;
+           const zp = p.z_proje;
+           const diff = zp - zm;
+           let r = 74/255, g = 222/255, b = 128/255; // #4ade80 Yeil (Dz)
+           if (diff > 0.001) { r = 59/255; g = 130/255; b = 246/255; } // #3b82f6 Mavi (Dolgu)
+           else if (diff < -0.001) { r = 248/255; g = 113/255; b = 113/255; } // #f87171 Krmz (Kaz)
+           
+           colors[i * 3] = r;
+           colors[i * 3 + 1] = g;
+           colors[i * 3 + 2] = b;
+        }
       });
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      if (useColors) {
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      }
       geo.setIndex(Array.from(indices));
       geo.computeVertexNormals();
       return geo;
     };
 
     return { 
-      meshMevcut: buildGeometry('z_mevcut'), 
-      meshProje: buildGeometry('z_proje'),
+      meshMevcut: buildGeometry('z_mevcut', false), 
+      meshProje: buildGeometry('z_proje', true),
       center, factor, minZ 
     };
   }, [points]);
@@ -154,42 +172,14 @@ function Excavation3D({ points }) {
     <group ref={groupRef} rotation={[-Math.PI / 2, 0, 0]}>
       {/* Mevcut Arazi (Şeffaf Kahverengi/Gri) */}
       <mesh geometry={meshMevcut}>
-        <meshStandardMaterial color="#8ab4f8" transparent opacity={0.2} wireframe={false} side={THREE.DoubleSide} />
+        <meshStandardMaterial color="#8ab4f8" transparent opacity={0.15} wireframe={false} side={THREE.DoubleSide} />
       </mesh>
       
-      {/* Proje/Kazı Sonu Durumu */}
+      {/* Proje/Kazı Sonu Durumu - Yüzeyin kendisi renklendirildi */}
       <mesh geometry={meshProje}>
-        <meshStandardMaterial color="#9ca3af" transparent opacity={0.5} side={THREE.DoubleSide} flatShading />
+        <meshStandardMaterial vertexColors={true} side={THREE.DoubleSide} flatShading={true} />
       </mesh>
 
-      {/* Noktalar ve Fark Silindirleri */}
-      {points.map((p, i) => {
-        const px = (p.x - center.x) * factor;
-        const py = (p.y - center.y) * factor;
-        const zm = (p.z_mevcut - minZ) * 2;
-        const zp = (p.z_proje - minZ) * 2;
-        const diff = zp - zm;
-        let color = "#4ade80"; // Yeşil (Düz)
-        if (diff > 0.001) color = "#3b82f6"; // Mavi (Dolgu)
-        else if (diff < -0.001) color = "#f87171"; // Kırmızı (Kazı)
-
-        return (
-          <group key={i}>
-            <mesh position={[px, py, zm]}>
-              <sphereGeometry args={[0.08, 8, 8]} />
-              <meshStandardMaterial color={color} />
-            </mesh>
-            <mesh position={[px, py, zp]}>
-              <sphereGeometry args={[0.08, 8, 8]} />
-              <meshStandardMaterial color={color} />
-            </mesh>
-            <mesh position={[px, py, (zm + zp) / 2]} rotation={[0, 0, 0]}>
-              <cylinderGeometry args={[0.03, 0.03, Math.abs(zm - zp) || 0.02]} />
-              <meshStandardMaterial color={color} />
-            </mesh>
-          </group>
-        );
-      })}
       <ambientLight intensity={0.8} />
       <pointLight position={[20, 20, 50]} intensity={1.5} />
     </group>
