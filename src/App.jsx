@@ -2630,15 +2630,20 @@ function App() {
       {/* Sidebar Overlay for Mobile */}
       <div className={`sidebar-overlay ${mobileMenuOpen ? 'open' : ''}`} onClick={() => setMobileMenuOpen(false)}></div>
 
-      <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`} style={{ left: mobileMenuOpen ? '0' : (isSidebarCollapsed ? '-270px' : '0'), position: 'relative', transition: 'all 0.3s ease' }}>
-        <div className="sidebar-header" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--glass-border)' }}>
-          <div style={{ width: '32px', height: '32px', background: 'var(--primary-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <HardHat size={20} color="white" />
+      <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`} style={{ transition: 'all 0.3s ease' }}>
+        <div className="sidebar-header" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--glass-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ width: '32px', height: '32px', background: 'var(--primary-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <HardHat size={20} color="white" />
+            </div>
+            <div>
+              <h1 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Harita Portalı</h1>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>GIS Dashboard</div>
+            </div>
           </div>
-          <div>
-            <h1 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Harita Portalı</h1>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>GIS Dashboard</div>
-          </div>
+          <button className="mobile-only" onClick={() => setMobileMenuOpen(false)} style={{ background: 'transparent', border: 'none', color: '#fff' }}>
+            <X size={24} />
+          </button>
         </div>
 
         <div className="sidebar-profile">
@@ -2684,7 +2689,10 @@ function App() {
       <div className="main-content">
         <header className="top-app-bar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-             <div className="search-box" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)', borderRadius: '10px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px', minWidth: '350px' }}>
+             <button className="mobile-only" onClick={() => setMobileMenuOpen(true)} style={{ background: 'transparent', border: 'none', color: '#fff', marginRight: '10px' }}>
+               <Menu size={24} />
+             </button>
+             <div className="search-box hide-mobile" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)', borderRadius: '10px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px', minWidth: '350px' }}>
               <Search size={18} color="var(--text-muted)" />
               <input type="text" placeholder="Proje veya veri ara..." style={{ background: 'transparent', border: 'none', color: 'white', outline: 'none', width: '100%', fontSize: '0.9rem' }} />
             </div>
