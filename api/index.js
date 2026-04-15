@@ -342,6 +342,44 @@ app.post('/api/settings', async (req, res) => {
 // --- DOSYA YÜKLEME VE HESAPLAMA ---
 const upload = multer({ dest: '/tmp/' }); // Vercel için /tmp kullanıyoruz
 
+// --- YARDIMCI GEOMETRİ FONKSİYONLARI ---
+
+/**
+ * Üçgen içindeki bir noktanın kotunu (Z) Barycentric koordinat sistemi ile hesaplar.
+ * @param {number} x - Hedef X koordinatı
+ * @param {number} y - Hedef Y koordinatı
+ * @param {Uint32Array} triangles - Üçgen indeksleri
+ * @param {Array} points - Noktalar listesi
+ * @returns {number|null} Hesaplanmış kot veya dışındaysa null
+ */
+function getZFromTIN(x, y, triangles, points) {
+    for (let i = 0; i < triangles.length; i += 3) {
+        const p0 = points[triangles[i]];
+        const p1 = points[triangles[i+1]];
+        const p2 = points[triangles[i+2]];
+
+        // Barycentric Koordinat Hesaplama
+        // det = (y2 - y3)(x1 - x3) + (x3 - x2)(y1 - y3)
+        const det = (p1.y - p2.y) * (p0.x - p2.x) + (p2.x - p1.x) * (p0.y - p2.y);
+        
+        // Eğer üçgen çok dar veya çizgisel ise det 0 olur, atla
+        if (Math.abs(det) < 1e-10) continue;
+
+        const w1 = ((p1.y - p2.y) * (x - p2.x) + (p2.x - p1.x) * (y - p2.y)) / det;
+        const w2 = ((p2.y - p0.y) * (x - p2.x) + (p0.x - p2.x) * (y - p2.y)) / det;
+        const w3 = 1 - w1 - w2;
+
+        // Nokta üçgenin içinde mi? (Küçük bir toleransla)
+        if (w1 >= -1e-7 && w2 >= -1e-7 && w3 >= -1e-7) {
+            const z0 = p0.z_mevcut || p0.z || 0;
+            const z1 = p1.z_mevcut || p1.z || 0;
+            const z2 = p2.z_mevcut || p2.z || 0;
+            return w1 * z0 + w2 * z1 + w3 * z2;
+        }
+    }
+    return null; // Nokta üçgen ağının dışında
+}
+
 const mapHeaders = (row) => {
     const mapped = {};
     const lowerRow = {};
@@ -476,75 +514,84 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         const ptsProje = parseFile(req.files['file_proje'][0]);
         
         let finalPoints = [];
-        
-        // Eşleştirme Algoritması: Mevcut noktalar için Proje dosyası içindeki en yakın XY koordinatlı noktayı bul
-        ptsMevcut.forEach(pm => {
-            let closest = null;
-            let minDist = Infinity;
-            
-            ptsProje.forEach(pp => {
-                const dx = pm.x - pp.x;
-                const dy = pm.y - pp.y;
-                const distSq = dx*dx + dy*dy;
-                if (distSq < minDist) {
-                    minDist = distSq;
-                    closest = pp;
-                }
-            });
-            
-            // Eğer en yakın nokta çok uzak değilse (Örn: 200 metreden yakınsa, aynı arazidir)
-            const matchedZProje = (closest && minDist < 40000) ? closest.z_mevcut : pm.z_mevcut;
-            
-            finalPoints.push({
-                id: pm.id,
-                x: pm.x,
-                y: pm.y,
-                z_mevcut: pm.z_mevcut,
-                z_proje: matchedZProje
-            });
-        });
-
-        // --- KESİN HACİM HESAPLAMASI (DELAUNAY TIN MODELİ) ---
-        // Pikselleri 25m2 varsaymak yerine, noktaları birbiriyle ağ (üçgen model) olarak örüyoruz
         let cut = 0, fill = 0;
-        
-        if (finalPoints.length >= 3) {
-            const coords = finalPoints.map(p => [p.x, p.y]);
+
+        if (ptsMevcut.length >= 3 && ptsProje.length >= 3) {
             const DelaunatorModule = await import('delaunator');
             const Delaunator = DelaunatorModule.default || DelaunatorModule;
-            const delaunay = Delaunator.from(coords);
-            const triangles = delaunay.triangles;
-            
-            for (let i = 0; i < triangles.length; i += 3) {
-                const p0 = finalPoints[triangles[i]];
-                const p1 = finalPoints[triangles[i+1]];
-                const p2 = finalPoints[triangles[i+2]];
-                
-                // 2D Üçgen Alanı Hesaplama
-                const area = 0.5 * Math.abs(
-                    p0.x * (p1.y - p2.y) +
-                    p1.x * (p2.y - p0.y) +
-                    p2.x * (p0.y - p1.y)
-                );
-                
-                // Prizmanın ortalama yüksekliği (Z Farkı)
-                const diff0 = (p0.z_proje || 0) - (p0.z_mevcut || 0);
-                const diff1 = (p1.z_proje || 0) - (p1.z_mevcut || 0);
-                const diff2 = (p2.z_proje || 0) - (p2.z_mevcut || 0);
-                
-                const avgDiff = (diff0 + diff1 + diff2) / 3;
-                const polyVolume = area * avgDiff;
-                
-                if (polyVolume > 0) {
-                    fill += polyVolume;
-                } else {
-                    cut += Math.abs(polyVolume);
+
+            // 1. Mevcut ve Proje yüzeylerini ayrı ayrı üçgenle
+            const delMevcut = Delaunator.from(ptsMevcut.map(p => [p.x, p.y]));
+            const delProje = Delaunator.from(ptsProje.map(p => [p.x, p.y]));
+
+            // 2. Birleşik Fark Nokta Seti Oluştur (Difference Surface)
+            const diffPoints = [];
+
+            // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
+            ptsMevcut.forEach(p => {
+                const zp = getZFromTIN(p.x, p.y, delProje.triangles, ptsProje);
+                if (zp !== null) {
+                    diffPoints.push({ x: p.x, y: p.y, zm: p.z_mevcut, zp: zp });
                 }
+            });
+
+            // Adım B: Proje noktalarını mevcut yüzeyine iz düşür
+            ptsProje.forEach(p => {
+                // Halihazırda eklenmiş (çakışan) noktaları atla
+                if (diffPoints.some(dp => Math.abs(dp.x - p.x) < 0.001 && Math.abs(dp.y - p.y) < 0.001)) return;
+                
+                const zm = getZFromTIN(p.x, p.y, delMevcut.triangles, ptsMevcut);
+                if (zm !== null) {
+                    diffPoints.push({ x: p.x, y: p.y, zm: zm, zp: p.z_mevcut });
+                }
+            });
+
+            // 3. Fark Modelini Üçgenle ve Hacim Hesapla
+            if (diffPoints.length >= 3) {
+                const delDiff = Delaunator.from(diffPoints.map(p => [p.x, p.y]));
+                const triDiff = delDiff.triangles;
+                
+                for (let i = 0; i < triDiff.length; i += 3) {
+                    const p0 = diffPoints[triDiff[i]];
+                    const p1 = diffPoints[triDiff[i+1]];
+                    const p2 = diffPoints[triDiff[i+2]];
+                    
+                    // 2D Alan
+                    const area = 0.5 * Math.abs(p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y));
+                    
+                    // Her köşedeki fark: (Proje - Mevcut)
+                    const d0 = p0.zp - p0.zm;
+                    const d1 = p1.zp - p1.zm;
+                    const d2 = p2.zp - p2.zm;
+                    
+                    // Prizma Hacmi = Alan * Ortalama Yükseklik Farkı
+                    const avgDiff = (d0 + d1 + d2) / 3;
+                    const vol = area * avgDiff;
+
+                    if (vol > 0) fill += vol; else cut += Math.abs(vol);
+                }
+
+                // Arayüzde gösterilecek son noktaları hazırla
+                finalPoints = diffPoints.map((p, idx) => ({
+                    id: `D${idx+1}`,
+                    x: p.x,
+                    y: p.y,
+                    z_mevcut: p.zm,
+                    z_proje: p.zp
+                }));
             }
         } else {
-            // Sadece 1-2 nokta varsa basit yaklaşım
-            finalPoints.forEach(p => {
-                const diff = (p.z_proje || 0) - (p.z_mevcut || 0);
+            // Yetersiz nokta varsa eski basit yöntemi koru (veya hata ver)
+            ptsMevcut.forEach(pm => {
+                let closest = ptsProje.length > 0 ? ptsProje[0] : pm;
+                let minDist = Infinity;
+                ptsProje.forEach(pp => {
+                    const d = Math.pow(pm.x-pp.x, 2) + Math.pow(pm.y-pp.y, 2);
+                    if (d < minDist) { minDist = d; closest = pp; }
+                });
+                const zp = (minDist < 40000) ? closest.z_mevcut : pm.z_mevcut;
+                finalPoints.push({ ...pm, z_proje: zp });
+                const diff = zp - pm.z_mevcut;
                 if (diff > 0) fill += diff; else cut += Math.abs(diff);
             });
         }
