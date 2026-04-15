@@ -79,76 +79,100 @@ function AIAssistantCard({ insights }) {
   );
 }
 
-// 3D Arazi Bileşeni
-function Terrain3D({ points, onSelectPoint, selectedPoints = [], isProfileMode = false }) {
+// 3D Kazı (Excavation) Görselleştirme Bileşeni
+import Delaunator from 'delaunator';
+
+function Excavation3D({ points }) {
   const groupRef = useRef();
 
-  const { normalizedPoints } = useMemo(() => {
-    if (!points || points.length === 0) return { normalizedPoints: [] };
+  const { meshMevcut, meshProje, center, factor, minZ } = useMemo(() => {
+    if (!points || points.length < 3) return {};
 
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
+    const zs = points.map(p => Math.min(p.z_mevcut, p.z_proje));
+    
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
-    const minZ = Math.min(...points.map(p => Math.min(p.z_mevcut, p.z_proje)));
+    const minZ = Math.min(...zs);
+    const rangeZ = Math.max(...points.map(p => Math.max(p.z_mevcut, p.z_proje))) - minZ;
 
-    const width = maxX - minX || 10;
-    const height = maxY - minY || 10;
+    const width = maxX - minX || 1;
+    const height = maxY - minY || 1;
     const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-
     const maxDim = Math.max(width, height);
-    const factor = 20 / (maxDim || 1);
+    const factor = 25 / maxDim;
 
-    return {
-      normalizedPoints: points.map(p => ({
-        x: (p.x - center.x) * factor,
-        y: (p.y - center.y) * factor,
-        z_m: (p.z_mevcut - minZ) * 2,
-        z_p: (p.z_proje - minZ) * 2
-      }))
+    // Triangulation
+    const coords = points.map(p => [p.x, p.y]);
+    const delaunay = Delaunator.from(coords);
+    const indices = delaunay.triangles;
+
+    // Build Geometries
+    const buildGeometry = (zField) => {
+      const positions = new Float32Array(points.length * 3);
+      points.forEach((p, i) => {
+        positions[i * 3] = (p.x - center.x) * factor;
+        positions[i * 3 + 1] = (p.y - center.y) * factor;
+        positions[i * 3 + 2] = (p[zField] - minZ) * 2; // Z scale
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setIndex(Array.from(indices));
+      geo.computeVertexNormals();
+      return geo;
+    };
+
+    return { 
+      meshMevcut: buildGeometry('z_mevcut'), 
+      meshProje: buildGeometry('z_proje'),
+      center, factor, minZ 
     };
   }, [points]);
 
-  useFrame(() => {
-    // groupRef.current.rotation.z += 0.005; // Auto-rotation kapatıldı
-  });
-
-  if (normalizedPoints.length === 0) return null;
+  if (!meshMevcut) return null;
 
   return (
-    <group ref={groupRef} rotation={[-Math.PI / 4, 0, 0]}>
-      {normalizedPoints.map((p, i) => (
-        <group 
-          key={`pt-${i}`}
-          onClick={(e) => {
-            if (isProfileMode && onSelectPoint) {
-              e.stopPropagation();
-              onSelectPoint({ ...points[i], _index: i });
-            }
-          }}
-        >
-          <mesh position={[p.x, p.y, p.z_m]}>
-            <sphereGeometry args={[isProfileMode && selectedPoints.some(sp => sp._index === i) ? 0.6 : 0.3, 16, 16]} />
-            <meshStandardMaterial 
-              color={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : "#4ade80"} 
-              emissive={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : "#000000"}
-            />
-          </mesh>
-          <mesh position={[p.x, p.y, p.z_p]}>
-            <sphereGeometry args={[0.3, 16, 16]} />
-            <meshStandardMaterial color={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : "#3b82f6"} transparent opacity={0.6} />
-          </mesh>
-          <mesh position={[p.x, p.y, (p.z_m + p.z_p) / 2]}>
-            <cylinderGeometry args={[0.05, 0.05, Math.abs(p.z_p - p.z_m) || 0.1]} />
-            <meshStandardMaterial color={isProfileMode && selectedPoints.some(sp => sp._index === i) ? "#facc15" : (p.z_p >= p.z_m ? "#4ade80" : "#f87171")} />
-          </mesh>
-        </group>
-      ))}
-      <gridHelper args={[40, 20, "#444", "#222"]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, -1]} />
-      <ambientLight intensity={0.6} />
-      <pointLight position={[10, 10, 20]} intensity={1} />
+    <group ref={groupRef} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* Mevcut Arazi (Şeffaf Kahverengi/Gri) */}
+      <mesh geometry={meshMevcut}>
+        <meshStandardMaterial color="#8b5a2b" transparent opacity={0.4} wireframe={false} side={THREE.DoubleSide} />
+      </mesh>
+      
+      {/* Proje/Kazı Sonu Durumu (Mavi/Kırmızı gölgeli Mesh) */}
+      <mesh geometry={meshProje}>
+        <meshStandardMaterial color="#3b82f6" transparent opacity={0.7} side={THREE.DoubleSide} flatShading />
+      </mesh>
+
+      {/* Noktalar ve Fark Silindirleri */}
+      {points.map((p, i) => {
+        const px = (p.x - center.x) * factor;
+        const py = (p.y - center.y) * factor;
+        const zm = (p.z_mevcut - minZ) * 2;
+        const zp = (p.z_proje - minZ) * 2;
+        return (
+          <group key={i}>
+            <mesh position={[px, py, zm]}>
+              <sphereGeometry args={[0.08, 8, 8]} />
+              <meshStandardMaterial color="#4ade80" />
+            </mesh>
+            <mesh position={[px, py, zp]}>
+              <sphereGeometry args={[0.08, 8, 8]} />
+              <meshStandardMaterial color="#f87171" />
+            </mesh>
+            <mesh position={[px, py, (zm + zp) / 2]} rotation={[0, 0, 0]}>
+              <cylinderGeometry args={[0.02, 0.02, Math.abs(zm - zp) || 0.01]} />
+              <meshStandardMaterial color={zp >= zm ? "#4ade80" : "#f87171"} />
+            </mesh>
+          </group>
+        );
+      })}
+
+      <gridHelper args={[50, 25, "#444", "#222"]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, -0.1]} />
+      <ambientLight intensity={0.8} />
+      <pointLight position={[20, 20, 50]} intensity={1.5} />
     </group>
   );
 }
@@ -1188,6 +1212,17 @@ function App() {
     }
   };
 
+  const handleDeleteArchiveProject = async (firmId, jobName) => {
+    if (!window.confirm(`"${jobName}" projesini ve tüm analiz verilerini silmek istediğinize emin misiniz?`)) return;
+    try {
+      await axios.delete(`${API_URL}/api/projects/${firmId}/${encodeURIComponent(jobName)}`, getAuthHeaders());
+      alert("Proje başarıyla silindi.");
+      fetchArchiveProjects();
+    } catch(e) {
+      alert("Silme hatası: " + (e.response?.data || e.message));
+    }
+  };
+
   // Hata durumunda render koruması
   if (loginError && !authToken) {
     console.warn("⚠️ AUTH HATASI:", loginError);
@@ -1362,13 +1397,10 @@ function App() {
                     <Upload size={18} /> Veri
                   </button>
                   <button onClick={() => setActiveTab('table')} className={`btn ${activeTab === 'table' ? '' : 'btn-secondary'}`}>
-                    <TableIcon size={18} /> Tablo
+                    <TableIcon size={18} /> Tablo Editörü
                   </button>
                   <button onClick={() => setActiveTab('results')} className={`btn ${activeTab === 'results' ? '' : 'btn-secondary'}`}>
-                    <BarChart3 size={18} /> Sonuçlar
-                  </button>
-                  <button onClick={() => setActiveTab('map')} className={`btn ${activeTab === 'map' ? '' : 'btn-secondary'}`}>
-                    <MapIcon size={18} /> 3D Harita
+                    <BarChart3 size={18} /> Analiz Sonuçları (3D)
                   </button>
                 </nav>
               </div>
@@ -1501,134 +1533,33 @@ function App() {
                     </button>
                   </div>
 
-                  <section className="glass-card" style={{ marginTop: '2.5rem', textAlign: 'center' }}>
-                    <h3 style={{ marginBottom: '1rem' }}>Hızlı 3D Arazi Modeli</h3>
-                    <div style={{ height: '400px', background: '#0a0a0a', borderRadius: '12px' }}>
-                      <Canvas camera={{ position: [20, 20, 20], fov: 45 }}>
+                  <section className="glass-card" style={{ marginTop: '2.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <h3 style={{ margin: 0 }}>3D Kazı İzleme ve Arazi Modeli</h3>
+                      <div style={{ display: 'flex', gap: '10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#8b5a2b', opacity: 0.5 }}></div> Mevcut</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#3b82f6' }}></div> Proje</span>
+                      </div>
+                    </div>
+                    <div style={{ height: '500px', background: '#020617', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--glass-border)' }}>
+                      <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
                         <OrbitControls enableDamping={true} />
-                        <Terrain3D points={points} />
+                        <Excavation3D points={points} />
                       </Canvas>
                     </div>
+                    <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                      * Fare ile döndürebilir, tekerlek ile yakınlaşabilirsiniz. Renkli silindirler kazı/dolgu derinliğini temsil eder.
+                    </p>
                   </section>
                 </div>
               )}
 
               {activeTab === 'map' && (
-                <section className="glass-card" style={{ height: '600px', padding: 0, background: '#000', overflow: 'hidden', position: 'relative' }}>
-                  <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}>
-                    <button 
-                      className={`btn ${isProfileMode ? 'active' : 'btn-secondary'}`} 
-                      onClick={() => {
-                        setIsProfileMode(!isProfileMode);
-                        setSelectedProfilePoints([]);
-                      }}
-                      style={{ background: isProfileMode ? '#facc15' : '', color: isProfileMode ? '#000' : '' }}
-                    >
-                      <MapIcon size={18} /> {isProfileMode ? 'Kesit Modundan Çık' : 'Kesit (Profil) Oluştur'}
-                    </button>
-                    {isProfileMode && (
-                      <div style={{ background: 'rgba(0,0,0,0.7)', padding: '10px 15px', borderRadius: '8px', marginTop: '10px', color: '#fff', fontSize: '0.9rem', border: '1px solid var(--glass-border)' }}>
-                        {selectedProfilePoints.length === 0 && 'Araziden başlangıç noktasını (A) seçin.'}
-                        {selectedProfilePoints.length === 1 && 'Bitiş noktasını (B) seçin.'}
-                        {selectedProfilePoints.length === 2 && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Kesit oluşturuldu!</span>
-                            <button className="btn-icon-small" onClick={() => setSelectedProfilePoints([])} style={{ background: '#ef4444', color: 'white', marginLeft: '10px', padding: '4px 8px' }}>
-                              Temizle
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
-                    <OrbitControls enableDamping={true} />
-                    <Terrain3D 
-                      points={points} 
-                      isProfileMode={isProfileMode}
-                      selectedPoints={selectedProfilePoints}
-                      onSelectPoint={(pt) => {
-                        if (selectedProfilePoints.length < 2) {
-                          setSelectedProfilePoints(prev => {
-                            if (prev.some(p => p._index === pt._index)) return prev;
-                            return [...prev, pt];
-                          });
-                        }
-                      }}
-                    />
-                  </Canvas>
-
-                  {isProfileMode && selectedProfilePoints.length === 2 && profileData && profileData.points.length > 1 && (
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '35%', background: 'var(--sidebar-bg)', borderTop: '1px solid var(--glass-border)', padding: '15px' }} className="anim-fade-in">
-                      <h4 style={{ color: '#fff', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Arazi Kesit Profili</span>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Mesafe: {profileData.distAB.toFixed(2)}m</span>
-                      </h4>
-                      {(() => {
-                        const pts = profileData.points;
-                        const width = 1000;
-                        const height = 150;
-                        const distAB = profileData.distAB;
-                        const zVals = pts.flatMap(p => [p.z_mevcut, p.z_proje]);
-                        const minZ = Math.min(...zVals) - 2;
-                        const maxZ = Math.max(...zVals) + 2;
-                        const rangeZ = (maxZ - minZ) || 10;
-
-                        const getPath = (field) => pts.map((pt, i) => {
-                          const x = (pt.dist / distAB) * width;
-                          const y = height - ((pt[field] - minZ) / rangeZ) * height;
-                          return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
-                        }).join(' ');
-
-                        const areaPathMevcut = pts.map((pt, i) => {
-                           const x = (pt.dist / distAB) * width;
-                           const y = height - ((pt.z_mevcut - minZ) / rangeZ) * height;
-                           return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
-                        }).join(' ');
-                        const areaPathProje = [...pts].reverse().map(pt => {
-                           const x = (pt.dist / distAB) * width;
-                           const y = height - ((pt.z_proje - minZ) / rangeZ) * height;
-                           return `L ${x},${y}`;
-                        }).join(' ');
-                        const areaPath = areaPathMevcut + ' ' + areaPathProje + ' Z';
-                        
-                        return (
-                         <div style={{ width: '100%', height: 'calc(100% - 30px)', position: 'relative' }}>
-                          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
-                            <defs>
-                              <linearGradient id="fillGrad" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="var(--accent-color)" stopOpacity="0.4" />
-                                <stop offset="100%" stopColor="var(--error-color)" stopOpacity="0.4" />
-                              </linearGradient>
-                            </defs>
-                            <path d={areaPath} fill="url(#fillGrad)" />
-                            
-                            <path d={getPath('z_mevcut')} fill="none" stroke="#4ade80" strokeWidth="3" />
-                            <path d={getPath('z_proje')} fill="none" stroke="#3b82f6" strokeWidth="3" strokeDasharray="5,5" />
-                            
-                            {pts.map((pt, i) => {
-                               const x = (pt.dist / distAB) * width;
-                               const ym = height - ((pt.z_mevcut - minZ) / rangeZ) * height;
-                               const yp = height - ((pt.z_proje - minZ) / rangeZ) * height;
-                               return (
-                                 <g key={`pt-${i}`}>
-                                   <circle cx={x} cy={ym} r="3" fill="#4ade80" />
-                                   <circle cx={x} cy={yp} r="3" fill="#3b82f6" />
-                                 </g>
-                               );
-                            })}
-                          </svg>
-                          <div style={{ position: 'absolute', right: 10, top: 10, display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.5)', padding: '5px', borderRadius: '4px' }}>
-                            <span style={{ color: '#4ade80', fontWeight: 'bold' }}>— Mevcut</span>
-                            <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>- - Proje</span>
-                          </div>
-                         </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </section>
+                <div style={{ textAlign: 'center', padding: '5rem' }}>
+                  <Info size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                  <p>Bu bölüm Kubaj Sonuçları sayfasına "3D Kazı İzleme" olarak taşınmıştır.</p>
+                  <button onClick={() => setActiveTab('results')} className="btn" style={{ marginTop: '1rem' }}>Analiz Sonuçlarına Git</button>
+                </div>
               )}
             </main>
           </div>
@@ -2514,6 +2445,7 @@ function App() {
                             <button 
                               className="btn-icon-small" 
                               style={{ color: 'var(--primary-color)' }}
+                              title="Detayları Görüntüle"
                               onClick={() => {
                                 const firm = firms.find(f => f.id === p.firmId || f._id === p.firmId);
                                 if (firm) setSelectedFirm(firm);
@@ -2522,6 +2454,14 @@ function App() {
                               }}
                             >
                               <ChevronRight size={18} />
+                            </button>
+                            <button 
+                              className="btn-icon-small" 
+                              style={{ color: 'var(--error-color)' }}
+                              title="Projeyi Sil"
+                              onClick={() => handleDeleteArchiveProject(p.firmId, p.jobName)}
+                            >
+                              <Trash2 size={18} />
                             </button>
                           </div>
                         </td>
@@ -2600,8 +2540,77 @@ function App() {
             </main>
           </div>
         );
-      default:
-        return null;
+      case 'admin':
+        return (
+          <div className="module-container anim-fade-in">
+            <header className="module-header">
+              <div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Admin Kontrol Paneli</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Sistem genel yönetimi ve kullanıcı istatistikleri</p>
+              </div>
+              <button className="btn btn-secondary" onClick={() => fetchAdminData()}>
+                <RefreshCw size={18} /> Verileri Güncelle
+              </button>
+            </header>
+
+            <main>
+              <div className="stats-grid">
+                <div className="stat-card active">
+                  <div className="stat-icon-box"><Factory size={24} /></div>
+                  <div className="stat-info">
+                    <div className="value">{firms.length}</div>
+                    <div className="label">Kayıtlı Firma</div>
+                  </div>
+                </div>
+                <div className="stat-card success">
+                  <div className="stat-icon-box"><LayoutDashboard size={24} /></div>
+                  <div className="stat-info">
+                    <div className="value">{archiveProjects.length}</div>
+                    <div className="label">Toplam Proje</div>
+                  </div>
+                </div>
+                <div className="stat-card warning">
+                  <div className="stat-icon-box"><User size={24} /></div>
+                  <div className="stat-info">
+                    <div className="value">{adminUsers.length}</div>
+                    <div className="label">Sistem Kullanıcısı</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid" style={{ marginTop: '2rem' }}>
+                <section className="glass-card">
+                   <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                     <Settings size={20} color="var(--primary-color)" /> Hızlı Erişim
+                   </h3>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                     <button onClick={() => { setActiveModule('settings'); setAdminSettingsTab('users'); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start' }}>
+                        <User size={18} /> Kullanıcı Yönetimine Git
+                     </button>
+                     <button onClick={() => { setActiveModule('settings'); setAdminSettingsTab('logs'); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start' }}>
+                        <BookOpen size={18} /> Sistem Loglarını İncele
+                     </button>
+                     <button onClick={() => { setActiveModule('settings'); setAdminSettingsTab('company'); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start' }}>
+                        <Building2 size={18} /> Kurumsal Ayarları Düzenle
+                     </button>
+                   </div>
+                </section>
+
+                <section className="glass-card">
+                  <h3 style={{ marginBottom: '1.5rem' }}>Son Giriş Özetleri</h3>
+                  <div style={{ maxHeight: '250px', overflowY: 'auto', fontSize: '0.85rem' }}>
+                    {loginLogs.slice(0, 10).map((log, i) => (
+                      <div key={i} style={{ padding: '10px', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between' }}>
+                        <span><strong>{log.username}</strong> ({log.ip})</span>
+                        <span style={{ color: log.success ? '#10b981' : '#f87171' }}>{log.success ? 'BAŞARILI' : 'HATALI'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            </main>
+          </div>
+        );
       }
     } catch (err) {
       console.error("❌ MODÜL RENDER HATASI:", err);
