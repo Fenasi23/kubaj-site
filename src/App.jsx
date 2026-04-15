@@ -52,6 +52,22 @@ function FlyToLocation({ lat, lng }) {
   }, [lat, lng, map]);
   return null;
 }
+
+function CameraController({ view, setView }) {
+  const { camera } = useThree();
+  React.useEffect(() => {
+    if (view === 'top') {
+      camera.position.set(0, 50, 0.1);
+      camera.lookAt(0,0,0);
+      setView('free');
+    } else if (view === 'front') {
+      camera.position.set(0, 10, 50);
+      camera.lookAt(0,0,0);
+      setView('free');
+    }
+  }, [view, camera, setView]);
+  return null;
+}
 // Removed extend and custom MapControls to prevent R3F catalog corruption
 
 // AI Assistant Insights Card Component
@@ -138,12 +154,12 @@ function Excavation3D({ points }) {
     <group ref={groupRef} rotation={[-Math.PI / 2, 0, 0]}>
       {/* Mevcut Arazi (Şeffaf Kahverengi/Gri) */}
       <mesh geometry={meshMevcut}>
-        <meshStandardMaterial color="#8b5a2b" transparent opacity={0.4} wireframe={false} side={THREE.DoubleSide} />
+        <meshStandardMaterial color="#8ab4f8" transparent opacity={0.2} wireframe={false} side={THREE.DoubleSide} />
       </mesh>
       
-      {/* Proje/Kazı Sonu Durumu (Mavi/Kırmızı gölgeli Mesh) */}
+      {/* Proje/Kazı Sonu Durumu */}
       <mesh geometry={meshProje}>
-        <meshStandardMaterial color="#3b82f6" transparent opacity={0.7} side={THREE.DoubleSide} flatShading />
+        <meshStandardMaterial color="#9ca3af" transparent opacity={0.5} side={THREE.DoubleSide} flatShading />
       </mesh>
 
       {/* Noktalar ve Fark Silindirleri */}
@@ -152,25 +168,28 @@ function Excavation3D({ points }) {
         const py = (p.y - center.y) * factor;
         const zm = (p.z_mevcut - minZ) * 2;
         const zp = (p.z_proje - minZ) * 2;
+        const diff = zp - zm;
+        let color = "#4ade80"; // Yeşil (Düz)
+        if (diff > 0.001) color = "#3b82f6"; // Mavi (Dolgu)
+        else if (diff < -0.001) color = "#f87171"; // Kırmızı (Kazı)
+
         return (
           <group key={i}>
             <mesh position={[px, py, zm]}>
               <sphereGeometry args={[0.08, 8, 8]} />
-              <meshStandardMaterial color="#4ade80" />
+              <meshStandardMaterial color={color} />
             </mesh>
             <mesh position={[px, py, zp]}>
               <sphereGeometry args={[0.08, 8, 8]} />
-              <meshStandardMaterial color="#f87171" />
+              <meshStandardMaterial color={color} />
             </mesh>
             <mesh position={[px, py, (zm + zp) / 2]} rotation={[0, 0, 0]}>
-              <cylinderGeometry args={[0.02, 0.02, Math.abs(zm - zp) || 0.01]} />
-              <meshStandardMaterial color={zp >= zm ? "#4ade80" : "#f87171"} />
+              <cylinderGeometry args={[0.03, 0.03, Math.abs(zm - zp) || 0.02]} />
+              <meshStandardMaterial color={color} />
             </mesh>
           </group>
         );
       })}
-
-      <gridHelper args={[50, 25, "#444", "#222"]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, -0.1]} />
       <ambientLight intensity={0.8} />
       <pointLight position={[20, 20, 50]} intensity={1.5} />
     </group>
@@ -354,6 +373,7 @@ function App() {
 
   // Geotagged Photos State
   const [photoMarkers, setPhotoMarkers] = useState([]);
+  const [cameraView, setCameraView] = useState('free');
 
   // DMS to Decimal Helper
   const convertDMSToDecimal = (dms, ref) => {
@@ -1324,6 +1344,7 @@ function App() {
                 <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Modül</th>
                 <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Tarih</th>
                 <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Durum</th>
+                <th style={{ padding: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>İşlemler</th>
               </tr>
             </thead>
             <tbody>
@@ -1335,11 +1356,16 @@ function App() {
                   <td style={{ padding: '16px 12px' }}>
                     <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>Tamamlandı</span>
                   </td>
+                  <td style={{ padding: '16px 12px', textAlign: 'center' }}>
+                    <button className="btn-icon-small" style={{ color: 'var(--error-color)' }} onClick={() => handleDeleteArchiveProject(p.firmId, p.jobName)} title="Projeyi Sil">
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {archiveProjects.length === 0 && (
                 <tr>
-                  <td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Henüz bir aktivite bulunmuyor.</td>
+                  <td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Henüz bir aktivite bulunmuyor.</td>
                 </tr>
               )}
             </tbody>
@@ -1533,22 +1559,30 @@ function App() {
                     </button>
                   </div>
 
-                  <section className="glass-card" style={{ marginTop: '2.5rem' }}>
+                  <section className="glass-card" style={{ marginTop: '2.5rem', position: 'relative' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                       <h3 style={{ margin: 0 }}>3D Kazı İzleme ve Arazi Modeli</h3>
                       <div style={{ display: 'flex', gap: '10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#8b5a2b', opacity: 0.5 }}></div> Mevcut</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#3b82f6' }}></div> Proje</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#3b82f6' }}></div> Dolgu (Mavi)</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#f87171' }}></div> Kazı (Kırmızı)</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#4ade80' }}></div> Düz (Yeşil)</span>
                       </div>
                     </div>
+                    
+                    <div style={{ position: 'absolute', top: '70px', right: '30px', zIndex: 10, display: 'flex', gap: '10px' }}>
+                       <button className="btn btn-secondary" onClick={() => setCameraView('top')}>Kuşbakışı</button>
+                       <button className="btn btn-secondary" onClick={() => setCameraView('front')}>Karşıdan</button>
+                    </div>
+
                     <div style={{ height: '500px', background: '#020617', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--glass-border)' }}>
                       <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
+                        <CameraController view={cameraView} setView={setCameraView} />
                         <OrbitControls enableDamping={true} />
                         <Excavation3D points={points} />
                       </Canvas>
                     </div>
                     <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                      * Fare ile döndürebilir, tekerlek ile yakınlaşabilirsiniz. Renkli silindirler kazı/dolgu derinliğini temsil eder.
+                      * Fare ile döndürebilir, tekerlek ile yakınlaşabilirsiniz. Renkler kazı(kırmızı) ve dolgu(mavi) derinliğini temsil eder.
                     </p>
                   </section>
                 </div>
