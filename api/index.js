@@ -515,12 +515,30 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         let ptsMevcut = parseFile(req.files['file_mevcut'][0]);
         let ptsProje = parseFile(req.files['file_proje'][0]);
         
-        // Z'si 0, null veya NaN olan sınır dışı noktaları filtrele
-        ptsMevcut = ptsMevcut.filter(p => !isNaN(p.z_mevcut) && p.z_mevcut !== 0 && p.z_mevcut != null);
-        ptsProje = ptsProje.filter(p => (!isNaN(p.z_mevcut) && p.z_mevcut !== 0 && p.z_mevcut != null) || (!isNaN(p.z_proje) && p.z_proje !== 0 && p.z_proje != null));
+        const filterZAndOutliers = (pts, isProje = false) => {
+            // 1. Sıfır (0.00), null, NaN Filtresi
+            let validPts = pts.filter(p => {
+                const isValid = (z) => !isNaN(z) && z !== 0 && z !== 0.0 && z != null;
+                return isProje ? (isValid(p.z_mevcut) || isValid(p.z_proje)) : isValid(p.z_mevcut);
+            });
+            if (validPts.length === 0) return validPts;
+
+            // 2. Outlier Filtresi (Ortalama ± 50m)
+            const sumZ = validPts.reduce((acc, p) => acc + (isProje ? (p.z_proje || p.z_mevcut || 0) : (p.z_mevcut || 0)), 0);
+            const avgZ = sumZ / validPts.length;
+
+            return validPts.filter(p => {
+                const z = isProje ? (p.z_proje || p.z_mevcut || 0) : (p.z_mevcut || 0);
+                return Math.abs(z - avgZ) <= 50; 
+            });
+        };
+
+        ptsMevcut = filterZAndOutliers(ptsMevcut, false);
+        ptsProje = filterZAndOutliers(ptsProje, true);
         
         let finalPoints = [];
         let cut = 0, fill = 0;
+        let hasHighDiffWarning = false;
 
         if (ptsMevcut.length >= 3 && ptsProje.length >= 3) {
             const DelaunatorModule = await import('delaunator');
@@ -549,6 +567,16 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 const zm = getZFromTIN(p.x, p.y, delMevcut.triangles, ptsMevcut);
                 if (zm !== null) {
                     diffPoints.push({ x: p.x, y: p.y, zm: zm, zp: p.z_mevcut });
+                }
+            });
+
+            // Zemin-Taban farkının toleransı (Cap > 20m)
+            diffPoints.forEach(dp => {
+                const diff = Math.abs(dp.zp - dp.zm);
+                if (diff > 20) {
+                    hasHighDiffWarning = true;
+                    if (dp.zp > dp.zm) dp.zp = dp.zm + 20;
+                    else dp.zp = dp.zm - 20;
                 }
             });
 
@@ -610,7 +638,19 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             return res.status(400).send('Hacim sonucu 1.000.000 m³ üzerinde hesaplandı. Birimlerin Metre(m) olduğunu ve 0 kotlu verilerinizi kontrol ediniz. İşlem durduruldu (Veri okuma hatası şüphesi).');
         }
 
-        const kubajData = { points: finalPoints, results: { cutVolume: cut, fillVolume: fill, totalVolume: fill - cut } };
+        const warningsList = hasHighDiffWarning 
+            ? ['Aşırı kot farkı (>20m) bulunan sapan noktalar tespit edildi ve hacim şişmesini önlemek için 20 metre toleransına çekilerek düzeltildi.'] 
+            : [];
+
+        const kubajData = { 
+            points: finalPoints, 
+            results: { 
+                cutVolume: cut, 
+                fillVolume: fill, 
+                totalVolume: fill - cut,
+                warnings: warningsList
+            } 
+        };
         
         await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
         
