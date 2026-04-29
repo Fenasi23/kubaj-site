@@ -380,14 +380,25 @@ function getZFromTIN(x, y, triangles, points) {
     return null; // Nokta üçgen ağının dışında
 }
 
+const parseFormattedValue = (val) => {
+    if (!val) return 0;
+    let str = val.toString().trim();
+    if (str.includes('.') && str.includes(',')) {
+        str = str.replace(/\./g, "").replace(",", ".");
+    } else if (str.includes(',') && !str.includes('.')) {
+        str = str.replace(",", ".");
+    }
+    return parseFloat(str) || 0;
+};
+
 const mapHeaders = (row) => {
     const mapped = {};
     const lowerRow = {};
     Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
-    mapped.x = parseFloat((lowerRow['x'] || lowerRow['x koordinatı'] || lowerRow['east'] || 0).toString().replace(',', '.'));
-    mapped.y = parseFloat((lowerRow['y'] || lowerRow['y koordinatı'] || lowerRow['north'] || 0).toString().replace(',', '.'));
-    mapped.z_mevcut = parseFloat((lowerRow['z_mevcut'] || lowerRow['mevcut kot (m)'] || lowerRow['mevcut'] || lowerRow['z1'] || lowerRow['ground'] || 0).toString().replace(',', '.'));
-    mapped.z_proje = parseFloat((lowerRow['z_proje'] || lowerRow['proje kot (m)'] || lowerRow['proje'] || lowerRow['z2'] || lowerRow['design'] || 0).toString().replace(',', '.'));
+    mapped.x = parseFormattedValue(lowerRow['x'] || lowerRow['x koordinatı'] || lowerRow['east']);
+    mapped.y = parseFormattedValue(lowerRow['y'] || lowerRow['y koordinatı'] || lowerRow['north']);
+    mapped.z_mevcut = parseFormattedValue(lowerRow['z_mevcut'] || lowerRow['mevcut kot (m)'] || lowerRow['mevcut'] || lowerRow['z1'] || lowerRow['ground']);
+    mapped.z_proje = parseFormattedValue(lowerRow['z_proje'] || lowerRow['proje kot (m)'] || lowerRow['proje'] || lowerRow['z2'] || lowerRow['design']);
     mapped.id = lowerRow['id'] || lowerRow['nokta no'] || lowerRow['no'] || 'P';
     return mapped;
 };
@@ -494,9 +505,9 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     if (parts.length >= 4) {
                         pts.push({
                             id: parts[0], 
-                            y: parseFloat(parts[1].replace(',', '.')), 
-                            x: parseFloat(parts[2].replace(',', '.')),
-                            z_mevcut: parseFloat(parts[3].replace(',', '.'))
+                            y: parseFormattedValue(parts[1]), 
+                            x: parseFormattedValue(parts[2]),
+                            z_mevcut: parseFormattedValue(parts[3])
                         });
                     }
                 });
@@ -556,6 +567,49 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         ptsMevcut = filterZAndOutliers(ptsMevcut, false);
         ptsProje = filterZAndOutliers(ptsProje, true);
         
+        if (ptsMevcut.length === 0) {
+            return res.status(400).send('Dosya okuma kuralı filtrelemesi sonrasında mevcut noktalar kalmadı. Tüm kotlar tam 0.00 veya geçersiz olabilir.');
+        }
+
+        // --- Zemin ve Taban Sanity Check ---
+        let minZ = Infinity, maxZ = -Infinity;
+        let maxPoint = null, minPoint = null;
+
+        ptsMevcut.forEach(p => {
+             if (p.z_mevcut < minZ) { minZ = p.z_mevcut; minPoint = p; }
+             if (p.z_mevcut > maxZ) { maxZ = p.z_mevcut; maxPoint = p; }
+        });
+        
+        let avgZ = ptsMevcut.reduce((s, p) => s + p.z_mevcut, 0) / ptsMevcut.length;
+
+        // "Base Z (Kazı Taban Kotu)" eksikliği kontrolü
+        if (ptsProje.length === 0 && ptsMevcut.length > 0) {
+             ptsProje = ptsMevcut.map(p => ({
+                 ...p,
+                 z_proje: minZ // Hepsini Min_Z'ye projeksiyon yap
+             }));
+        } else {
+             // ptsProje içinde eğer z_proje yoksa z_mevcut veya minZ al
+             ptsProje.forEach(p => {
+                 if (p.z_proje === undefined && p.z_mevcut === undefined) p.z_proje = minZ;
+                 else if (p.z_proje === undefined) p.z_proje = p.z_mevcut;
+             });
+        }
+
+        const dz = maxZ - minZ;
+        if (dz > 50) {
+             if (fs.existsSync(req.files['file_mevcut'][0].path)) fs.unlinkSync(req.files['file_mevcut'][0].path);
+             if (req.files && req.files['file_proje'] && fs.existsSync(req.files['file_proje'][0].path)) fs.unlinkSync(req.files['file_proje'][0].path);
+             return res.status(400).send(`Kazı derinliği 50 metreden fazla (${dz.toFixed(2)}m). Hangi noktalar arasında aşırı kot farkı var? En yüksek (Max Z): ${maxZ.toFixed(2)}m (Nokta: ${maxPoint.id}), En düşük (Min Z): ${minZ.toFixed(2)}m (Nokta: ${minPoint.id}). Noktalarda virgül/ondalık kalibrasyon hatası taşıyor olabilirsiniz.`);
+        }
+
+        const debugData = {
+             avgZ: avgZ.toFixed(2),
+             maxZ: maxZ.toFixed(2),
+             minZ: minZ.toFixed(2),
+             first5Mevcut: ptsMevcut.slice(0, 5)
+        };
+
         let finalPoints = [];
         let cut = 0, fill = 0;
         let hasHighDiffWarning = false;
@@ -666,7 +720,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 cutVolume: cut, 
                 fillVolume: fill, 
                 totalVolume: fill - cut,
-                warnings: warningsList
+                warnings: warningsList,
+                debug: debugData
             } 
         };
         
