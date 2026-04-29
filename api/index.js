@@ -384,10 +384,10 @@ const mapHeaders = (row) => {
     const mapped = {};
     const lowerRow = {};
     Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
-    mapped.x = parseFloat(lowerRow['x'] || lowerRow['x koordinatı'] || lowerRow['east'] || 0);
-    mapped.y = parseFloat(lowerRow['y'] || lowerRow['y koordinatı'] || lowerRow['north'] || 0);
-    mapped.z_mevcut = parseFloat(lowerRow['z_mevcut'] || lowerRow['mevcut kot (m)'] || lowerRow['mevcut'] || lowerRow['z1'] || lowerRow['ground'] || 0);
-    mapped.z_proje = parseFloat(lowerRow['z_proje'] || lowerRow['proje kot (m)'] || lowerRow['proje'] || lowerRow['z2'] || lowerRow['design'] || 0);
+    mapped.x = parseFloat((lowerRow['x'] || lowerRow['x koordinatı'] || lowerRow['east'] || 0).toString().replace(',', '.'));
+    mapped.y = parseFloat((lowerRow['y'] || lowerRow['y koordinatı'] || lowerRow['north'] || 0).toString().replace(',', '.'));
+    mapped.z_mevcut = parseFloat((lowerRow['z_mevcut'] || lowerRow['mevcut kot (m)'] || lowerRow['mevcut'] || lowerRow['z1'] || lowerRow['ground'] || 0).toString().replace(',', '.'));
+    mapped.z_proje = parseFloat((lowerRow['z_proje'] || lowerRow['proje kot (m)'] || lowerRow['proje'] || lowerRow['z2'] || lowerRow['design'] || 0).toString().replace(',', '.'));
     mapped.id = lowerRow['id'] || lowerRow['nokta no'] || lowerRow['no'] || 'P';
     return mapped;
 };
@@ -493,8 +493,10 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     // NCN Formati: NoktaID Y(Saga) X(Yukari) Z(Kot)
                     if (parts.length >= 4) {
                         pts.push({
-                            id: parts[0], y: parseFloat(parts[1]), x: parseFloat(parts[2]),
-                            z_mevcut: parseFloat(parts[3])
+                            id: parts[0], 
+                            y: parseFloat(parts[1].replace(',', '.')), 
+                            x: parseFloat(parts[2].replace(',', '.')),
+                            z_mevcut: parseFloat(parts[3].replace(',', '.'))
                         });
                     }
                 });
@@ -510,8 +512,12 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             return pts;
         };
 
-        const ptsMevcut = parseFile(req.files['file_mevcut'][0]);
-        const ptsProje = parseFile(req.files['file_proje'][0]);
+        let ptsMevcut = parseFile(req.files['file_mevcut'][0]);
+        let ptsProje = parseFile(req.files['file_proje'][0]);
+        
+        // Z'si 0, null veya NaN olan sınır dışı noktaları filtrele
+        ptsMevcut = ptsMevcut.filter(p => !isNaN(p.z_mevcut) && p.z_mevcut !== 0 && p.z_mevcut != null);
+        ptsProje = ptsProje.filter(p => (!isNaN(p.z_mevcut) && p.z_mevcut !== 0 && p.z_mevcut != null) || (!isNaN(p.z_proje) && p.z_proje !== 0 && p.z_proje != null));
         
         let finalPoints = [];
         let cut = 0, fill = 0;
@@ -596,6 +602,14 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             });
         }
         
+        // Sonuç Validasyonu: Eğer hacim 1 Milyon m3 üzeriyse durdur
+        if (cut > 1000000 || fill > 1000000) {
+            // Temizlik
+            if (fs.existsSync(req.files['file_mevcut'][0].path)) fs.unlinkSync(req.files['file_mevcut'][0].path);
+            if (fs.existsSync(req.files['file_proje'][0].path)) fs.unlinkSync(req.files['file_proje'][0].path);
+            return res.status(400).send('Hacim sonucu 1.000.000 m³ üzerinde hesaplandı. Birimlerin Metre(m) olduğunu ve 0 kotlu verilerinizi kontrol ediniz. İşlem durduruldu (Veri okuma hatası şüphesi).');
+        }
+
         const kubajData = { points: finalPoints, results: { cutVolume: cut, fillVolume: fill, totalVolume: fill - cut } };
         
         await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
