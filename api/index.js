@@ -523,13 +523,33 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             });
             if (validPts.length === 0) return validPts;
 
-            // 2. Outlier Filtresi (Ortalama ± 50m)
-            const sumZ = validPts.reduce((acc, p) => acc + (isProje ? (p.z_proje || p.z_mevcut || 0) : (p.z_mevcut || 0)), 0);
+            // 2. Format Zorlaması (Tam sayıysa %100 yap)
+            const allInt = validPts.every(p => {
+                const z = isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut;
+                return Number.isInteger(z);
+            });
+            if (allInt) {
+                validPts.forEach(p => {
+                    if (p.z_mevcut !== undefined) p.z_mevcut /= 100;
+                    if (p.z_proje !== undefined) p.z_proje /= 100;
+                });
+            }
+
+            // 3. İstatistiksel Outlier Filtresi (Ortalama ± 3*StdDev)
+            const sumZ = validPts.reduce((acc, p) => acc + (isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut), 0);
             const avgZ = sumZ / validPts.length;
 
+            const variance = validPts.reduce((acc, p) => {
+                const z = isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut;
+                return acc + Math.pow(z - avgZ, 2);
+            }, 0) / validPts.length;
+            const stdDev = Math.sqrt(variance);
+
+            if (stdDev === 0) return validPts;
+
             return validPts.filter(p => {
-                const z = isProje ? (p.z_proje || p.z_mevcut || 0) : (p.z_mevcut || 0);
-                return Math.abs(z - avgZ) <= 50; 
+                const z = isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut;
+                return Math.abs(z - avgZ) <= (stdDev * 3); 
             });
         };
 
@@ -630,17 +650,15 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             });
         }
         
-        // Sonuç Validasyonu: Eğer hacim 1 Milyon m3 üzeriyse durdur
-        if (cut > 1000000 || fill > 1000000) {
-            // Temizlik
-            if (fs.existsSync(req.files['file_mevcut'][0].path)) fs.unlinkSync(req.files['file_mevcut'][0].path);
-            if (fs.existsSync(req.files['file_proje'][0].path)) fs.unlinkSync(req.files['file_proje'][0].path);
-            return res.status(400).send('Hacim sonucu 1.000.000 m³ üzerinde hesaplandı. Birimlerin Metre(m) olduğunu ve 0 kotlu verilerinizi kontrol ediniz. İşlem durduruldu (Veri okuma hatası şüphesi).');
+        const warningsList = [];
+        if (hasHighDiffWarning) {
+            warningsList.push('Aşırı kot farkı (>20m) bulunan sapan noktalar tespit edildi ve hacim şişmesini önlemek için 20 metre toleransına çekilerek düzeltildi.');
         }
 
-        const warningsList = hasHighDiffWarning 
-            ? ['Aşırı kot farkı (>20m) bulunan sapan noktalar tespit edildi ve hacim şişmesini önlemek için 20 metre toleransına çekilerek düzeltildi.'] 
-            : [];
+        // Sonuç Validasyonu Esnetildi: Eğer hacim 1 Milyon m3 üzeriyse uyarı ver ama durdurma
+        if (cut > 1000000 || fill > 1000000) {
+            warningsList.push('Yüksek hacimli saha tespit edildi (> 1.000.000 m³). Veri birimlerinin doğruluğundan emin olunuz.');
+        }
 
         const kubajData = { 
             points: finalPoints, 
