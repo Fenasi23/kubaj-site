@@ -616,7 +616,6 @@ function App() {
     { id: 'pointcloud', label: '3D Nokta Bulutu', icon: <Target size={18} /> },
     { id: 'hakedis', label: 'Hakediş Yönetimi', icon: <FileCheck size={18} /> },
     { id: 'archive', label: 'İş Takip Paneli', icon: <LayoutDashboard size={18} /> },
-    { id: 'peyzaj', label: 'Peyzaj Mimarı', icon: <TreePine size={18} /> },
     { id: 'converter', label: 'Format Dönüştürücü', icon: <RefreshCw size={18} /> },
     { id: 'settings', label: 'Ayarlar', icon: <Settings size={18} /> },
     { id: 'guide', label: 'Kullanım Kılavuzu', icon: <BookOpen size={18} /> },
@@ -746,14 +745,13 @@ function App() {
     fetchSettings();
   }, [API_URL]);
 
-  // Projeleri Yükle
-  React.useEffect(() => {
-    if (selectedFirm) {
-      axios.get(`${API_URL}/api/firms/${selectedFirm.id}/projects`).then(r => {
-        setProjects(r.data);
-      });
-    }
-  }, [selectedFirm, API_URL]);
+  // useEffect(() => {
+  //   if (selectedFirm) {
+  //     axios.get(`${API_URL}/api/firms/${selectedFirm.id}/projects`).then(r => {
+  //       setProjects(r.data);
+  //     });
+  //   }
+  // }, [selectedFirm, API_URL]);
 
   // Arşiv Projelerini Yükle
   const fetchArchiveProjects = useCallback(async () => {
@@ -766,11 +764,11 @@ function App() {
     }
   }, [API_URL]);
 
-  React.useEffect(() => {
-    if (activeModule === 'archive' || activeModule === 'dashboard') {
-      fetchArchiveProjects();
-    }
-  }, [activeModule, fetchArchiveProjects]);
+  // useEffect(() => {
+  //   if (activeModule === 'archive' || activeModule === 'dashboard') {
+  //     fetchArchiveProjects();
+  //   }
+  // }, [activeModule, fetchArchiveProjects]);
 
   // Hakediş Bilgilerini Seçimle Senkronize Et (Otomatik Doldurma)
   React.useEffect(() => {
@@ -1930,20 +1928,7 @@ function App() {
           </div>
         );
 
-      case 'peyzaj':
-        return (
-          <div className="module-container anim-fade-in">
-            <header className="module-header">
-              <div>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Peyzaj Mimarı</h2>
-                <p style={{ color: 'var(--text-muted)' }}>Eskizden Profesyonel Peyzaj Planına Dönüşüm</p>
-              </div>
-            </header>
-            <main>
-              <LandscapeArchitect />
-            </main>
-          </div>
-        );
+
 
       case 'settings':
         return (
