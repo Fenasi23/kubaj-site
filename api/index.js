@@ -388,17 +388,21 @@ function getZFromTIN(x, y, triangles, points, maxEdgeSq = Infinity) {
 }
 
 const parseFormattedValue = (val) => {
-    if (!val) return 0;
+    if (val === undefined || val === null || val === '') return 0;
+    if (typeof val === 'number') return val;
     let str = val.toString().trim();
-    // Sayıların içindeki noktayı (.) ondalık ayırıcı olarak kabul et (Kural 1)
-    // Virgül (,) binlik ayırıcı olabileceği veya yanlışlıkla konulduğu için temizle (Kural 2)
-    // Böylece 500.000 -> 500.0 olarak JavaScript tarafından doğru parse edilir.
-    // 4.500.000,123 formatı Netcad'de nadirdir, ancak gelirse önce virgülü noktaya çevirip öncekileri temizlemek gerekir.
-    // Kullanıcı kuralı: "Eğer bir sayı 500.000 şeklinde geliyorsa bunu 500.0 olarak algıla"
-    if (str.includes(',') && !str.includes('.')) {
-        str = str.replace(/,/g, "."); // Sadece virgül varsa ondalık olabilir
+    
+    // KURAL 1: Ondalık Ayracı Filtresi
+    if (str.includes('.') && str.includes(',')) {
+        // Örn: 1.234,56 -> 1234.56
+        str = str.replace(/\./g, "").replace(",", ".");
+    } else if (str.includes(',') && !str.includes('.')) {
+        // Örn: 21,96 -> 21.96
+        str = str.replace(/,/g, ".");
     } else {
-        str = str.replace(/,/g, ""); // Hem nokta hem virgül varsa veya sadece nokta varsa virgülleri temizle
+        // Sadece nokta varsa veya hiçbiri yoksa
+        // Örn: 2.196 -> 2.196 olarak kalır. parseFloat bunu ondalık kabul eder.
+        // Binlik ayırıcı sanıp silmiyoruz!
     }
     return parseFloat(str) || 0;
 };
@@ -527,10 +531,18 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
                 
                 const kesitNo = lowerRow['kesit'] || lowerRow['km'] || lowerRow['nokta no'] || lowerRow['id'] || `K${index+1}`;
-                const yarmaAlani = parseFormattedValue(lowerRow['yarma alanı'] || lowerRow['yarma alan'] || lowerRow['yarma'] || lowerRow['cut area']);
-                const dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
-                const araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['l']);
+                let yarmaAlani = parseFormattedValue(lowerRow['yarma alanı'] || lowerRow['yarma alan'] || lowerRow['yarma'] || lowerRow['cut area']);
+                let dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
+                let araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['l']);
                 
+                // KURAL 2: Alan Hesabı Denetimi (mm2'den m2'ye Dönüşüm)
+                // Veriyi en başta metreye zorla. Eğer alan 1.000 m2'den büyükse, büyük ihtimalle Netcad mm2 vermiştir.
+                if (yarmaAlani > 1000) yarmaAlani = yarmaAlani / 1000000;
+                if (dolguAlani > 1000) dolguAlani = dolguAlani / 1000000;
+                
+                // L değeri için de çok büyükse mm sanıp 1000'e bölebiliriz (opsiyonel koruma)
+                if (araUzaklik > 5000) araUzaklik = araUzaklik / 1000;
+
                 pts.push({ id: kesitNo, yarmaAlani, dolguAlani, araUzaklik, yarmaHacmi: 0, dolguHacmi: 0, kumulatifHacim: 0 });
             });
 
@@ -541,16 +553,19 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             for (let i = 0; i < pts.length; i++) {
                 let cut = 0, fill = 0;
+                // KURAL 3: Netcad Karşılaştırmalı Mantık & Doğrudan Çarpan L
+                // Hacim = (Alan1 + Alan2) / 2 * L
                 if (i > 0) {
                     const prev = pts[i-1];
                     const curr = pts[i];
                     const L = curr.araUzaklik || 0; 
-                    cut = ((prev.yarmaAlani + curr.yarmaAlani) / 2) * L;
-                    fill = ((prev.dolguAlani + curr.dolguAlani) / 2) * L;
+                    cut = ((prev.yarmaAlani + curr.yarmaAlani) / 2.0) * L;
+                    fill = ((prev.dolguAlani + curr.dolguAlani) / 2.0) * L;
                 }
 
-                if (cut > 100000 || fill > 100000) {
-                    throw new Error(`Birim Hatası: [${pts[i].id}] kesitinde hesaplanan hacim 100.000 m³ sınırını aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}). Lütfen Netcad tablosundaki alan ve uzaklık değerlerinin doğruluğunu kontrol ediniz.`);
+                // KURAL 4: Devre Kesici (Circuit Breaker) Loglaması
+                if (cut > 1000000 || fill > 1000000) {
+                    throw new Error(`Birim Hatası: [${pts[i].id}] kesitinde hesaplanan hacim 1.000.000 m³ sınırını aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}). Detay: L=${(pts[i].araUzaklik||0).toFixed(2)}m, Alan1=${(i>0?pts[i-1].yarmaAlani:0).toFixed(2)}m2, Alan2=${pts[i].yarmaAlani.toFixed(2)}m2.`);
                 }
 
                 pts[i].yarmaHacmi = cut;
