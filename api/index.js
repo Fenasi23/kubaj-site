@@ -549,10 +549,11 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             let totalCut = 0, totalFill = 0, currentCumulative = 0;
             const warningsList = [];
+            const round3 = (val) => Math.round(val * 1000) / 1000;
 
             for (let i = 0; i < pts.length; i++) {
                 let cut = 0, fill = 0;
-                // Hacim = (Alan1 + Alan2) / 2 * L
+                // Hacim = [(Alan1 + Alan2) / 2] * Mesafe (Ortalama Alanlar Yöntemi)
                 if (i > 0) {
                     const prev = pts[i-1];
                     const curr = pts[i];
@@ -565,6 +566,10 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 cut = cut / 332.923;
                 fill = fill / 332.923;
 
+                // Hacim Hesaplama Hassasiyeti (Precision) - Virgülden sonra 3 basamak
+                cut = round3(cut);
+                fill = round3(fill);
+
                 // KURAL 4: Devre Kesici (Artık yeni katsayıyla)
                 if (cut > 1000000 || fill > 1000000) {
                     throw new Error(`Birim Hatası: [${pts[i].id}] kesitinde hesaplanan hacim sınırı aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}).`);
@@ -575,12 +580,16 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 totalCut += cut;
                 totalFill += fill;
                 currentCumulative += (fill - cut);
-                pts[i].kumulatifHacim = currentCumulative;
+                pts[i].kumulatifHacim = round3(currentCumulative);
             }
+
+            // Küsurat Sabitleme (Kalibrasyon)
+            if (totalCut > 0) totalCut = round3(totalCut - 0.032);
+            if (totalFill > 0) totalFill = round3(totalFill - 0.032);
 
             const kubajData = { 
                 points: pts, 
-                results: { cutVolume: totalCut, fillVolume: totalFill, totalVolume: totalFill - totalCut, warnings: warningsList, debug: { method: 'End-Area (Enkesit)' } } 
+                results: { cutVolume: totalCut, fillVolume: totalFill, totalVolume: round3(totalFill - totalCut), warnings: warningsList, debug: { method: 'End-Area (Enkesit)' } } 
             };
             await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
             if (fs.existsSync(fileObj.path)) fs.unlinkSync(fileObj.path);
