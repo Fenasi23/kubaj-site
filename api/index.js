@@ -352,11 +352,18 @@ const upload = multer({ dest: '/tmp/' }); // Vercel için /tmp kullanıyoruz
  * @param {Array} points - Noktalar listesi
  * @returns {number|null} Hesaplanmış kot veya dışındaysa null
  */
-function getZFromTIN(x, y, triangles, points) {
+function getZFromTIN(x, y, triangles, points, maxEdgeSq = Infinity) {
     for (let i = 0; i < triangles.length; i += 3) {
         const p0 = points[triangles[i]];
         const p1 = points[triangles[i+1]];
         const p2 = points[triangles[i+2]];
+
+        if (maxEdgeSq !== Infinity) {
+            const d1 = Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
+            const d2 = Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
+            const d3 = Math.pow(p2.x - p0.x, 2) + Math.pow(p2.y - p0.y, 2);
+            if (d1 > maxEdgeSq || d2 > maxEdgeSq || d3 > maxEdgeSq) continue;
+        }
 
         // Barycentric Koordinat Hesaplama
         // det = (y2 - y3)(x1 - x3) + (x3 - x2)(y1 - y3)
@@ -371,9 +378,9 @@ function getZFromTIN(x, y, triangles, points) {
 
         // Nokta üçgenin içinde mi? (Küçük bir toleransla)
         if (w1 >= -1e-7 && w2 >= -1e-7 && w3 >= -1e-7) {
-            const z0 = p0.z_mevcut || p0.z || 0;
-            const z1 = p1.z_mevcut || p1.z || 0;
-            const z2 = p2.z_mevcut || p2.z || 0;
+            const z0 = p0.z_mevcut !== undefined ? p0.z_mevcut : p0.z || 0;
+            const z1 = p1.z_mevcut !== undefined ? p1.z_mevcut : p1.z || 0;
+            const z2 = p2.z_mevcut !== undefined ? p2.z_mevcut : p2.z || 0;
             return w1 * z0 + w2 * z1 + w3 * z2;
         }
     }
@@ -640,9 +647,28 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             // 2. Birleşik Fark Nokta Seti Oluştur (Difference Surface)
             const diffPoints = [];
 
+            const getDynamicMaxEdgeSq = (triangles, points) => {
+                let sumSq = 0;
+                let count = 0;
+                for (let i = 0; i < triangles.length; i += 3) {
+                    const p0 = points[triangles[i]];
+                    const p1 = points[triangles[i+1]];
+                    sumSq += Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
+                    count++;
+                }
+                const avgSq = count > 0 ? (sumSq / count) : 0;
+                const avgDist = Math.sqrt(avgSq);
+                // Ortalama kenarın 5 katına kadar izin ver, minimum 50m tolerans
+                const limitDist = Math.max(avgDist * 5, 50);
+                return limitDist * limitDist;
+            };
+
+            const maxMevcutEdgeSq = getDynamicMaxEdgeSq(delMevcut.triangles, ptsMevcut);
+            const maxProjeEdgeSq = getDynamicMaxEdgeSq(delProje.triangles, ptsProje);
+
             // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
             ptsMevcut.forEach(p => {
-                const zp = getZFromTIN(p.x, p.y, delProje.triangles, ptsProje);
+                const zp = getZFromTIN(p.x, p.y, delProje.triangles, ptsProje, maxProjeEdgeSq);
                 if (zp !== null) {
                     diffPoints.push({ x: p.x, y: p.y, zm: p.z_mevcut, zp: zp });
                 }
@@ -650,12 +676,13 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             // Adım B: Proje noktalarını mevcut yüzeyine iz düşür
             ptsProje.forEach(p => {
-                // Halihazırda eklenmiş (çakışan) noktaları atla
                 if (diffPoints.some(dp => Math.abs(dp.x - p.x) < 0.001 && Math.abs(dp.y - p.y) < 0.001)) return;
                 
-                const zm = getZFromTIN(p.x, p.y, delMevcut.triangles, ptsMevcut);
+                const zm = getZFromTIN(p.x, p.y, delMevcut.triangles, ptsMevcut, maxMevcutEdgeSq);
                 if (zm !== null) {
-                    diffPoints.push({ x: p.x, y: p.y, zm: zm, zp: p.z_mevcut });
+                    // p.z_proje kullanılması gerekiyor, p.z_mevcut değil
+                    const zProjected = p.z_proje !== undefined ? p.z_proje : p.z_mevcut;
+                    diffPoints.push({ x: p.x, y: p.y, zm: zm, zp: zProjected });
                 }
             });
 
@@ -673,21 +700,30 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 const delDiff = Delaunator.from(diffPoints.map(p => [p.x, p.y]));
                 const triDiff = delDiff.triangles;
                 
+                const maxDiffEdgeSq = getDynamicMaxEdgeSq(triDiff, diffPoints);
+
                 for (let i = 0; i < triDiff.length; i += 3) {
                     const p0 = diffPoints[triDiff[i]];
                     const p1 = diffPoints[triDiff[i+1]];
                     const p2 = diffPoints[triDiff[i+2]];
+                    
+                    const d1 = Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
+                    const d2 = Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
+                    const d3 = Math.pow(p2.x - p0.x, 2) + Math.pow(p2.y - p0.y, 2);
+
+                    // Sınır dışı üçgenleri (Convex Hull boşluklarını) yoksay
+                    if (d1 > maxDiffEdgeSq || d2 > maxDiffEdgeSq || d3 > maxDiffEdgeSq) continue;
                     
                     // 2D Alan
                     const area = 0.5 * Math.abs(p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y));
                     
                     // Her köşedeki fark: (Proje - Mevcut)
                     const d0 = p0.zp - p0.zm;
-                    const d1 = p1.zp - p1.zm;
-                    const d2 = p2.zp - p2.zm;
+                    const d1z = p1.zp - p1.zm;
+                    const d2z = p2.zp - p2.zm;
                     
                     // Prizma Hacmi = Alan * Ortalama Yükseklik Farkı
-                    const avgDiff = (d0 + d1 + d2) / 3;
+                    const avgDiff = (d0 + d1z + d2z) / 3;
                     const vol = area * avgDiff;
 
                     if (vol > 0) fill += vol; else cut += Math.abs(vol);
