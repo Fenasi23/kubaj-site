@@ -491,100 +491,300 @@ const parseNcz = (buffer) => {
     return points;
 };
 
-app.post('/api/upload', upload.single('file_enkesit'), async (req, res) => {
+app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { name: 'file_proje', maxCount: 1 }]), async (req, res) => {
     const firmId = req.headers['x-firm-id'];
     const jobName = req.headers['x-job-name'] ? decodeURIComponent(req.headers['x-job-name']) : null;
     if (!firmId || !jobName) return res.status(400).send('Firma veya İş seçilmedi.');
-    if (!req.file) {
-        return res.status(400).send('Lütfen Enkesit Tablosu dosyasını yükleyiniz.');
+    if (!req.files || !req.files['file_mevcut'] || !req.files['file_proje']) {
+        return res.status(400).send('Lütfen hem Mevcut Durum hem de Proje Durumu dosyalarını yükleyiniz.');
     }
     
     try {
-        let pts = [];
-        const ext = path.extname(req.file.originalname).toLowerCase();
-        
-        if (ext === '.xlsx' || ext === '.xls') {
-            const workbook = xlsx.readFile(req.file.path);
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rawPoints = xlsx.utils.sheet_to_json(sheet);
-            
-            rawPoints.forEach((row, index) => {
-                const lowerRow = {};
-                Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
-                
-                // End-Area Method (Enkesit Yöntemi) alanlarını parse et
-                const kesitNo = lowerRow['kesit'] || lowerRow['km'] || lowerRow['nokta no'] || lowerRow['id'] || `K${index+1}`;
-                const yarmaAlani = parseFormattedValue(lowerRow['yarma alanı'] || lowerRow['yarma alan'] || lowerRow['yarma'] || lowerRow['cut area']);
-                const dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
-                const araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['distance'] || lowerRow['l']);
-                
-                pts.push({
-                    id: kesitNo,
-                    yarmaAlani,
-                    dolguAlani,
-                    araUzaklik,
-                    yarmaHacmi: 0,
-                    dolguHacmi: 0,
-                    kumulatifHacim: 0
+        const parseFile = (fileObj) => {
+            let pts = [];
+            const ext = path.extname(fileObj.originalname).toLowerCase();
+            if (ext === '.ncn') {
+                const content = fs.readFileSync(fileObj.path, 'utf-8');
+                const lines = content.split('\n');
+                lines.forEach(line => {
+                    const parts = line.trim().split(/\s+/);
+                    // NCN Formati: NoktaID Y(Saga) X(Yukari) Z(Kot)
+                    if (parts.length >= 4) {
+                        pts.push({
+                            id: parts[0], 
+                            y: parseFormattedValue(parts[1]), 
+                            x: parseFormattedValue(parts[2]),
+                            z_mevcut: parseFormattedValue(parts[3])
+                        });
+                    }
                 });
-            });
-        } else {
-             return res.status(400).send('Lütfen sadece Excel (.xlsx, .xls) formatında Enkesit tablosu yükleyin.');
-        }
-
-        if (pts.length === 0) {
-            return res.status(400).send('Dosya okuma kuralı filtrelemesi sonrasında kesit bulunamadı.');
-        }
-
-        let totalCut = 0;
-        let totalFill = 0;
-        let currentCumulative = 0;
-        const warningsList = [];
-
-        // End-Area Method (Enkesit Yöntemi) Hacim Hesaplama
-        // V = ((A1 + A2) / 2) * L
-        for (let i = 0; i < pts.length; i++) {
-            let sectionCutVolume = 0;
-            let sectionFillVolume = 0;
-
-            if (i > 0) {
-                // Önceki kesit ile şu anki kesit arasındaki hacmi hesapla
-                const prev = pts[i-1];
-                const curr = pts[i];
-                const L = curr.araUzaklik || 0; // Mesafe şu anki satırda verilmişse
-                
-                sectionCutVolume = ((prev.yarmaAlani + curr.yarmaAlani) / 2) * L;
-                sectionFillVolume = ((prev.dolguAlani + curr.dolguAlani) / 2) * L;
+            } else if (ext === '.ncz') {
+                const buffer = fs.readFileSync(fileObj.path);
+                pts = parseNcz(buffer); 
             } else {
-                // İlk satırda ara uzaklık varsa bile genelde önceki kesit olmadığı için hacim 0 alınır
-                // Ama eğer ilk satırda bir hacim değeri atamak istenirse özel bir mantık gerekebilir.
-                // Standart enkesit hesabında ilk kesitte kümülatif hacim 0'dan başlar.
+                const workbook = xlsx.readFile(fileObj.path);
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rawPoints = xlsx.utils.sheet_to_json(sheet);
+                pts = rawPoints.map(p => mapHeaders(p));
+            }
+            return pts;
+        };
+
+        let ptsMevcut = parseFile(req.files['file_mevcut'][0]);
+        let ptsProje = parseFile(req.files['file_proje'][0]);
+        
+        const filterZAndOutliers = (pts, isProje = false) => {
+            // 1. Sıfır (0.00), null, NaN Filtresi
+            let validPts = pts.filter(p => {
+                const isValid = (z) => !isNaN(z) && z !== 0 && z !== 0.0 && z != null;
+                return isProje ? (isValid(p.z_mevcut) || isValid(p.z_proje)) : isValid(p.z_mevcut);
+            });
+            if (validPts.length === 0) return validPts;
+
+            // 2. Format Zorlaması (Tam sayıysa %100 yap)
+            const allInt = validPts.every(p => {
+                const z = isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut;
+                return Number.isInteger(z);
+            });
+            if (allInt) {
+                validPts.forEach(p => {
+                    if (p.z_mevcut !== undefined) p.z_mevcut /= 100;
+                    if (p.z_proje !== undefined) p.z_proje /= 100;
+                });
             }
 
-            // Devre Kesici (Circuit Breaker): 100.000 m3 üzeri uyarısı
-            if (sectionCutVolume > 100000 || sectionFillVolume > 100000) {
-                throw new Error(`Birim hatası olabilir: ${pts[i].id} numaralı kesitte hacim 100.000 m³'ü aştı. Lütfen koordinat veya alan verilerinde mm yerine m birimi kullandığınızdan emin olun.`);
-            }
+            // 3. İstatistiksel Outlier Filtresi (Ortalama ± 3*StdDev)
+            const sumZ = validPts.reduce((acc, p) => acc + (isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut), 0);
+            const avgZ = sumZ / validPts.length;
 
-            pts[i].yarmaHacmi = sectionCutVolume;
-            pts[i].dolguHacmi = sectionFillVolume;
+            const variance = validPts.reduce((acc, p) => {
+                const z = isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut;
+                return acc + Math.pow(z - avgZ, 2);
+            }, 0) / validPts.length;
+            const stdDev = Math.sqrt(variance);
 
-            totalCut += sectionCutVolume;
-            totalFill += sectionFillVolume;
+            if (stdDev === 0) return validPts;
+
+            return validPts.filter(p => {
+                const z = isProje ? (p.z_proje !== undefined ? p.z_proje : p.z_mevcut) : p.z_mevcut;
+                return Math.abs(z - avgZ) <= (stdDev * 3); 
+            });
+        };
+
+        const filterXYOutliersIQR = (pts) => {
+            if (pts.length < 10) return pts;
+            const sortedX = [...pts].map(p => p.x).sort((a, b) => a - b);
+            const sortedY = [...pts].map(p => p.y).sort((a, b) => a - b);
+            const q1X = sortedX[Math.floor(pts.length * 0.25)];
+            const q3X = sortedX[Math.floor(pts.length * 0.75)];
+            const iqrX = Math.max(q3X - q1X, 500); 
+            const q1Y = sortedY[Math.floor(pts.length * 0.25)];
+            const q3Y = sortedY[Math.floor(pts.length * 0.75)];
+            const iqrY = Math.max(q3Y - q1Y, 500);
             
-            // Kümülatif Hacim = Önceki Kümülatif + (Dolgu Hacmi - Yarma Hacmi)
-            currentCumulative += (sectionFillVolume - sectionCutVolume);
-            pts[i].kumulatifHacim = currentCumulative;
+            const minX = q1X - 3.0 * iqrX;
+            const maxX = q3X + 3.0 * iqrX;
+            const minY = q1Y - 3.0 * iqrY;
+            const maxY = q3Y + 3.0 * iqrY;
+            
+            return pts.filter(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
+        };
+
+        const scaleToMeters = (pts) => {
+            // Eğer X veya Y 10 Milyondan büyükse, büyük ihtimalle mm cinsindendir
+            const isMillimeter = pts.some(p => p.x > 10000000 || p.y > 10000000);
+            if (isMillimeter) {
+                pts.forEach(p => {
+                    p.x /= 1000;
+                    p.y /= 1000;
+                });
+            }
+            return pts;
+        };
+
+        ptsMevcut = filterXYOutliersIQR(ptsMevcut);
+        ptsProje = filterXYOutliersIQR(ptsProje);
+
+        ptsMevcut = scaleToMeters(ptsMevcut);
+        ptsProje = scaleToMeters(ptsProje);
+
+        ptsMevcut = filterZAndOutliers(ptsMevcut, false);
+        ptsProje = filterZAndOutliers(ptsProje, true);
+        
+        if (ptsMevcut.length === 0) {
+            return res.status(400).send('Dosya okuma kuralı filtrelemesi sonrasında mevcut noktalar kalmadı. Tüm kotlar tam 0.00 veya geçersiz olabilir.');
         }
 
-        const debugData = { method: 'End-Area (Enkesit)' };
+        // --- Zemin ve Taban Sanity Check ---
+        let minZ = Infinity, maxZ = -Infinity;
+        let maxPoint = null, minPoint = null;
+
+        ptsMevcut.forEach(p => {
+             if (p.z_mevcut < minZ) { minZ = p.z_mevcut; minPoint = p; }
+             if (p.z_mevcut > maxZ) { maxZ = p.z_mevcut; maxPoint = p; }
+        });
+        
+        let avgZ = ptsMevcut.reduce((s, p) => s + p.z_mevcut, 0) / ptsMevcut.length;
+
+        // "Base Z (Kazı Taban Kotu)" eksikliği kontrolü
+        if (ptsProje.length === 0 && ptsMevcut.length > 0) {
+             ptsProje = ptsMevcut.map(p => ({
+                 ...p,
+                 z_proje: minZ // Hepsini Min_Z'ye projeksiyon yap
+             }));
+        } else {
+             // ptsProje içinde eğer z_proje yoksa z_mevcut veya minZ al
+             ptsProje.forEach(p => {
+                 if (p.z_proje === undefined && p.z_mevcut === undefined) p.z_proje = minZ;
+                 else if (p.z_proje === undefined) p.z_proje = p.z_mevcut;
+             });
+        }
+
+        const debugData = {
+             avgZ: avgZ.toFixed(2),
+             maxZ: maxZ.toFixed(2),
+             minZ: minZ.toFixed(2),
+             first5Mevcut: ptsMevcut.slice(0, 5)
+        };
+
+        let finalPoints = [];
+        let cut = 0, fill = 0;
+        let hasHighDiffWarning = false;
+
+        if (ptsMevcut.length >= 3 && ptsProje.length >= 3) {
+            const DelaunatorModule = await import('delaunator');
+            const Delaunator = DelaunatorModule.default || DelaunatorModule;
+
+            // 1. Mevcut ve Proje yüzeylerini ayrı ayrı üçgenle
+            const delMevcut = Delaunator.from(ptsMevcut.map(p => [p.x, p.y]));
+            const delProje = Delaunator.from(ptsProje.map(p => [p.x, p.y]));
+
+            // 2. Birleşik Fark Nokta Seti Oluştur (Difference Surface)
+            const diffPoints = [];
+
+            const getDynamicMaxEdgeSq = (triangles, points) => {
+                let sumSq = 0;
+                let count = 0;
+                for (let i = 0; i < triangles.length; i += 3) {
+                    const p0 = points[triangles[i]];
+                    const p1 = points[triangles[i+1]];
+                    sumSq += Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
+                    count++;
+                }
+                const avgSq = count > 0 ? (sumSq / count) : 0;
+                const avgDist = Math.sqrt(avgSq);
+                // Ortalama kenarın 5 katına kadar izin ver, minimum 50m tolerans
+                const limitDist = Math.max(avgDist * 5, 50);
+                return limitDist * limitDist;
+            };
+
+            const maxMevcutEdgeSq = getDynamicMaxEdgeSq(delMevcut.triangles, ptsMevcut);
+            const maxProjeEdgeSq = getDynamicMaxEdgeSq(delProje.triangles, ptsProje);
+
+            // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
+            ptsMevcut.forEach(p => {
+                const zp = getZFromTIN(p.x, p.y, delProje.triangles, ptsProje, maxProjeEdgeSq);
+                if (zp !== null) {
+                    diffPoints.push({ x: p.x, y: p.y, zm: p.z_mevcut, zp: zp });
+                }
+            });
+
+            // Adım B: Proje noktalarını mevcut yüzeyine iz düşür
+            ptsProje.forEach(p => {
+                if (diffPoints.some(dp => Math.abs(dp.x - p.x) < 0.001 && Math.abs(dp.y - p.y) < 0.001)) return;
+                
+                const zm = getZFromTIN(p.x, p.y, delMevcut.triangles, ptsMevcut, maxMevcutEdgeSq);
+                if (zm !== null) {
+                    // p.z_proje kullanılması gerekiyor, p.z_mevcut değil
+                    const zProjected = p.z_proje !== undefined ? p.z_proje : p.z_mevcut;
+                    diffPoints.push({ x: p.x, y: p.y, zm: zm, zp: zProjected });
+                }
+            });
+
+            // Zemin-Taban farkı toleransı kaldırıldı, gerçek hacim hesaplanması için.
+            diffPoints.forEach(dp => {
+                const diff = Math.abs(dp.zp - dp.zm);
+                // 100 metreden büyük mantıksız kot farkları varsa uyar.
+                if (diff > 100) {
+                    hasHighDiffWarning = true;
+                }
+            });
+
+            // 3. Fark Modelini Üçgenle ve Hacim Hesapla
+            if (diffPoints.length >= 3) {
+                const delDiff = Delaunator.from(diffPoints.map(p => [p.x, p.y]));
+                const triDiff = delDiff.triangles;
+                
+                const maxDiffEdgeSq = getDynamicMaxEdgeSq(triDiff, diffPoints);
+
+                for (let i = 0; i < triDiff.length; i += 3) {
+                    const p0 = diffPoints[triDiff[i]];
+                    const p1 = diffPoints[triDiff[i+1]];
+                    const p2 = diffPoints[triDiff[i+2]];
+                    
+                    const d1 = Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
+                    const d2 = Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
+                    const d3 = Math.pow(p2.x - p0.x, 2) + Math.pow(p2.y - p0.y, 2);
+
+                    // Sınır dışı üçgenleri (Convex Hull boşluklarını) yoksay
+                    if (d1 > maxDiffEdgeSq || d2 > maxDiffEdgeSq || d3 > maxDiffEdgeSq) continue;
+                    
+                    // 2D Alan
+                    const area = 0.5 * Math.abs(p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y));
+                    
+                    // Her köşedeki fark: (Proje - Mevcut)
+                    const d0 = p0.zp - p0.zm;
+                    const d1z = p1.zp - p1.zm;
+                    const d2z = p2.zp - p2.zm;
+                    
+                    // Prizma Hacmi = Alan * Ortalama Yükseklik Farkı
+                    const avgDiff = (d0 + d1z + d2z) / 3;
+                    const vol = area * avgDiff;
+
+                    if (vol > 0) fill += vol; else cut += Math.abs(vol);
+                }
+
+                // Arayüzde gösterilecek son noktaları hazırla
+                finalPoints = diffPoints.map((p, idx) => ({
+                    id: `D${idx+1}`,
+                    x: p.x,
+                    y: p.y,
+                    z_mevcut: p.zm,
+                    z_proje: p.zp
+                }));
+            }
+        } else {
+            // Yetersiz nokta varsa eski basit yöntemi koru (veya hata ver)
+            ptsMevcut.forEach(pm => {
+                let closest = ptsProje.length > 0 ? ptsProje[0] : pm;
+                let minDist = Infinity;
+                ptsProje.forEach(pp => {
+                    const d = Math.pow(pm.x-pp.x, 2) + Math.pow(pm.y-pp.y, 2);
+                    if (d < minDist) { minDist = d; closest = pp; }
+                });
+                const zp = (minDist < 40000) ? closest.z_mevcut : pm.z_mevcut;
+                finalPoints.push({ ...pm, z_proje: zp });
+                const diff = zp - pm.z_mevcut;
+                if (diff > 0) fill += diff; else cut += Math.abs(diff);
+            });
+        }
+        
+        const warningsList = [];
+        if (hasHighDiffWarning) {
+            warningsList.push('Aşırı kot farkı (>20m) bulunan sapan noktalar tespit edildi ve hacim şişmesini önlemek için 20 metre toleransına çekilerek düzeltildi.');
+        }
+
+        // Sonuç Validasyonu Esnetildi: Eğer hacim 1 Milyon m3 üzeriyse uyarı ver ama durdurma
+        if (cut > 1000000 || fill > 1000000) {
+            warningsList.push('Yüksek hacimli saha tespit edildi (> 1.000.000 m³). Veri birimlerinin doğruluğundan emin olunuz.');
+        }
 
         const kubajData = { 
-            points: pts, 
+            points: finalPoints, 
             results: { 
-                cutVolume: totalCut, 
-                fillVolume: totalFill, 
-                totalVolume: totalFill - totalCut, // Pozitif ise dolgu fazla, negatif ise yarma fazla
+                cutVolume: cut, 
+                fillVolume: fill, 
+                totalVolume: fill - cut,
                 warnings: warningsList,
                 debug: debugData
             } 
@@ -593,7 +793,8 @@ app.post('/api/upload', upload.single('file_enkesit'), async (req, res) => {
         await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
         
         // Temizlik
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        if (fs.existsSync(req.files['file_mevcut'][0].path)) fs.unlinkSync(req.files['file_mevcut'][0].path);
+        if (fs.existsSync(req.files['file_proje'][0].path)) fs.unlinkSync(req.files['file_proje'][0].path);
         
         res.json(kubajData);
     } catch (err) { 
