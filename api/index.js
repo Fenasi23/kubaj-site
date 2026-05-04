@@ -533,11 +533,21 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         let ptsMevcut = parseFile(req.files['file_mevcut'][0]);
         let ptsProje = parseFile(req.files['file_proje'][0]);
         
+        // NCN/NCZ formatından proje dosyası yüklendiğinde Z değerleri z_mevcut olarak gelir.
+        // Bunu proje (z_proje) alanına aktaralım ki filtrelemeler doğru çalışsın.
+        ptsProje.forEach(p => {
+            if (p.z_proje === 0 || p.z_proje === undefined) {
+                p.z_proje = p.z_mevcut;
+                p.z_mevcut = undefined;
+            }
+        });
+
         const filterZAndOutliers = (pts, isProje = false) => {
-            // 1. Sıfır (0.00), null, NaN Filtresi
+            // 1. Sıfır (0.00), null, NaN Filtresi (Z-Ekseni Filtresi)
+            // Kazı hacmi hesaplarken Z=0 olan noktaları hesaplamaya dahil etme!
             let validPts = pts.filter(p => {
-                const isValid = (z) => !isNaN(z) && z !== 0 && z !== 0.0 && z != null;
-                return isProje ? (isValid(p.z_mevcut) || isValid(p.z_proje)) : isValid(p.z_mevcut);
+                const z = isProje ? p.z_proje : p.z_mevcut;
+                return z !== undefined && z !== null && !isNaN(z) && Math.abs(z) > 0.001;
             });
             if (validPts.length === 0) return validPts;
 
@@ -590,10 +600,19 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             return pts.filter(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
         };
 
-        const scaleToMeters = (pts) => {
-            // Eğer X veya Y 10 Milyondan büyükse, büyük ihtimalle mm cinsindendir
-            const isMillimeter = pts.some(p => p.x > 10000000 || p.y > 10000000);
-            if (isMillimeter) {
+        const normalizeUnits = (pts) => {
+            if (pts.length < 2) return pts;
+            const xs = pts.map(p => p.x);
+            const ys = pts.map(p => p.y);
+            const rangeX = Math.max(...xs) - Math.min(...xs);
+            const rangeY = Math.max(...ys) - Math.min(...ys);
+            
+            // Eğer X, Y, Z değerleri 1.000.000'dan büyükse ve saha genişliği 20.000'den fazlaysa (20km),
+            // büyük ihtimalle veriler metre değil milimetre cinsindendir. Metrik sisteme sabitle.
+            const isVeryLargeCoords = pts.some(p => p.x > 1000000 || p.y > 1000000);
+            const isMillimeterScale = rangeX > 20000 || rangeY > 20000 || (isVeryLargeCoords && rangeX > 50000);
+            
+            if (isMillimeterScale) {
                 pts.forEach(p => {
                     p.x /= 1000;
                     p.y /= 1000;
@@ -605,8 +624,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         ptsMevcut = filterXYOutliersIQR(ptsMevcut);
         ptsProje = filterXYOutliersIQR(ptsProje);
 
-        ptsMevcut = scaleToMeters(ptsMevcut);
-        ptsProje = scaleToMeters(ptsProje);
+        ptsMevcut = normalizeUnits(ptsMevcut);
+        ptsProje = normalizeUnits(ptsProje);
 
         ptsMevcut = filterZAndOutliers(ptsMevcut, false);
         ptsProje = filterZAndOutliers(ptsProje, true);
@@ -744,6 +763,12 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     if (vol > 0) fill += vol; else cut += Math.abs(vol);
                 }
 
+                // Kesit Alanı Doğrulaması (Circuit Breaker)
+                // Eğer hesaplanan hacim 100.000 m3 değerini aşıyorsa matematiksel taşma varsay ve durdur.
+                if (cut > 100000 || fill > 100000) {
+                    throw new Error(`Birim Hatası: Hesaplanan hacim 100.000 m³ sınırını aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}). Lütfen X, Y, Z koordinatlarının ve referans kotlarının doğruluğunu (metre cinsinden olduğunu) kontrol ediniz.`);
+                }
+
                 // Arayüzde gösterilecek son noktaları hazırla
                 finalPoints = diffPoints.map((p, idx) => ({
                     id: `D${idx+1}`,
@@ -772,11 +797,6 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         const warningsList = [];
         if (hasHighDiffWarning) {
             warningsList.push('Aşırı kot farkı (>20m) bulunan sapan noktalar tespit edildi ve hacim şişmesini önlemek için 20 metre toleransına çekilerek düzeltildi.');
-        }
-
-        // Sonuç Validasyonu Esnetildi: Eğer hacim 1 Milyon m3 üzeriyse uyarı ver ama durdurma
-        if (cut > 1000000 || fill > 1000000) {
-            warningsList.push('Yüksek hacimli saha tespit edildi (> 1.000.000 m³). Veri birimlerinin doğruluğundan emin olunuz.');
         }
 
         const kubajData = { 
