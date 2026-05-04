@@ -254,9 +254,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('data');
   const [hakedisData, setHakedisData] = useState([]);
   
-  // Çift Dosya (Mevcut vs Proje) Upload State'leri
-  const [mevcutFile, setMevcutFile] = useState(null);
-  const [projeFile, setProjeFile] = useState(null);
+  // Enkesit Dosya Upload State'i
+  const [enkesitFile, setEnkesitFile] = useState(null);
   // AUTH STATE
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('auth_token'));
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('auth_username'));
@@ -960,14 +959,13 @@ function App() {
       alert("Lütfen önce bir firma ve iş (proje) seçiniz veya oluşturunuz.");
       return;
     }
-    if (!mevcutFile || !projeFile) {
-      alert("Hesaplama yapabilmek için hem 'Mevcut (İlk Ölçüm)' hem de 'Proje (Sonraki Ölçüm)' dosyalarını seçmelisiniz.");
+    if (!enkesitFile) {
+      alert("Hesaplama yapabilmek için 'Enkesit Tablosu (Excel)' dosyasını seçmelisiniz.");
       return;
     }
 
     const formData = new FormData();
-    formData.append('file_mevcut', mevcutFile);
-    formData.append('file_proje', projeFile);
+    formData.append('file_enkesit', enkesitFile);
     
     setLoading(true);
     try {
@@ -977,8 +975,7 @@ function App() {
       if (resp.data.points?.length > 0) setActiveTab('results');
       
       // Temizle
-      setMevcutFile(null);
-      setProjeFile(null);
+      setEnkesitFile(null);
       
       // AI Analizini tetikle
       performAIAnalysis(resp.data.points || [], resp.data.results?.totalVolume);
@@ -1114,12 +1111,24 @@ function App() {
   }, [selectedProfilePoints, points]);
 
   const recalculateKubaj = (pts) => {
-    let cut = 0, fill = 0;
-    pts.forEach(p => {
-        const diff = (parseFloat(p.z_proje) || 0) - (parseFloat(p.z_mevcut) || 0);
-        if (diff > 0) fill += diff * 25; else cut += Math.abs(diff) * 25;
-    });
-    setResults({ cutVolume: cut, fillVolume: fill, totalVolume: fill - cut });
+    let totalCut = 0, totalFill = 0, currentCumulative = 0;
+    for (let i = 0; i < pts.length; i++) {
+        let cut = 0, fill = 0;
+        if (i > 0) {
+            const prev = pts[i-1];
+            const curr = pts[i];
+            const L = parseFloat(curr.araUzaklik) || 0;
+            cut = ((parseFloat(prev.yarmaAlani) || 0) + (parseFloat(curr.yarmaAlani) || 0)) / 2 * L;
+            fill = ((parseFloat(prev.dolguAlani) || 0) + (parseFloat(curr.dolguAlani) || 0)) / 2 * L;
+        }
+        pts[i].yarmaHacmi = cut;
+        pts[i].dolguHacmi = fill;
+        totalCut += cut;
+        totalFill += fill;
+        currentCumulative += (fill - cut);
+        pts[i].kumulatifHacim = currentCumulative;
+    }
+    setResults({ cutVolume: totalCut, fillVolume: totalFill, totalVolume: totalFill - totalCut });
   };
 
   const handlePointChange = (index, field, value) => {
@@ -1131,7 +1140,7 @@ function App() {
   };
 
   const handleAddPoint = () => {
-    const newPoints = [...points, { id: `N${points.length + 1}`, x: 0, y: 0, z_mevcut: 0, z_proje: 0 }];
+    const newPoints = [...points, { id: `K${points.length + 1}`, yarmaAlani: 0, dolguAlani: 0, araUzaklik: 0, yarmaHacmi: 0, dolguHacmi: 0, kumulatifHacim: 0 }];
     setPoints(newPoints);
     recalculateKubaj(newPoints);
   };
@@ -1425,23 +1434,13 @@ function App() {
             <main>
               {activeTab === 'data' && (
                 <section className="glass-card dual-upload-section">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-                    {/* Mevcut Durum */}
-                    <div className={`upload-zone ${mevcutFile ? 'selected' : ''}`} onClick={() => document.getElementById('mevcutFileInput').click()}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem', marginBottom: '2rem' }}>
+                    <div className={`upload-zone ${enkesitFile ? 'selected' : ''}`} onClick={() => document.getElementById('enkesitFileInput').click()}>
                       <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
-                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>1. Mevcut Arazi Zemin</h3>
-                      <p style={{ color: 'var(--text-muted)' }}>Mevcut, Kazı Öncesi Ölçüm (.ncz, .ncn, .xls)</p>
-                      {mevcutFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{mevcutFile.name}</div>}
-                      <input id="mevcutFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setMevcutFile(e.target.files[0])} />
-                    </div>
-                    
-                    {/* Proje Durum */}
-                    <div className={`upload-zone ${projeFile ? 'selected' : ''}`} onClick={() => document.getElementById('projeFileInput').click()}>
-                      <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
-                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>2. Proje Arazi Zemin</h3>
-                      <p style={{ color: 'var(--text-muted)' }}>Temel veya Kazı Sonrası Ölçüm (.ncz, .ncn, .xls)</p>
-                      {projeFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{projeFile.name}</div>}
-                      <input id="projeFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setProjeFile(e.target.files[0])} />
+                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>1. Enkesit Tablosu Yükle</h3>
+                      <p style={{ color: 'var(--text-muted)' }}>Mevcut ve Proje alanlarını içeren Excel tablosu (.xlsx, .xls)</p>
+                      {enkesitFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{enkesitFile.name}</div>}
+                      <input id="enkesitFileInput" type="file" accept=".xlsx,.xls" hidden onChange={(e) => setEnkesitFile(e.target.files[0])} />
                     </div>
                   </div>
                   
@@ -1450,11 +1449,11 @@ function App() {
                        className="btn" 
                        style={{ background: 'var(--primary-color)', fontSize: '1.2rem', padding: '1rem 3rem' }} 
                        onClick={handleFilesUpload}
-                       disabled={loading || !mevcutFile || !projeFile}
+                       disabled={loading || !enkesitFile}
                     >
-                      {loading ? 'Sistem İki Dosyayı Karşılaştırıyor...' : 'Mevcut ve Proje Dosyalarını Karşılaştır'}
+                      {loading ? 'Hesaplanıyor...' : 'Hacim Hesapla (Enkesit Yöntemi)'}
                     </button>
-                    {(!mevcutFile || !projeFile) && <p style={{marginTop: '1rem', color: 'var(--text-muted)'}}>Devam etmek için her iki ölçümü de yukarıdaki kutulara yüklemelisiniz.</p>}
+                    {!enkesitFile && <p style={{marginTop: '1rem', color: 'var(--text-muted)'}}>Devam etmek için Excel Enkesit Tablosunu yüklemelisiniz.</p>}
                   </div>
                 </section>
               )}
@@ -1473,12 +1472,13 @@ function App() {
                     <table>
                       <thead style={{ position: 'sticky', top: 0, background: 'var(--sidebar-bg)', zIndex: 1 }}>
                         <tr>
-                          <th>Nokta ID</th>
-                          <th>Y (Sağa)</th>
-                          <th>X (Yukarı)</th>
-                          <th>Z Mevcut</th>
-                          <th>Z Proje</th>
-                          <th>Durum</th>
+                          <th>Kesit No</th>
+                          <th>Yarma Alanı (m²)</th>
+                          <th>Dolgu Alanı (m²)</th>
+                          <th>Ara Uzaklık (m)</th>
+                          <th>Yarma Hacmi (m³)</th>
+                          <th>Dolgu Hacmi (m³)</th>
+                          <th>Kümülatif Hacim (m³)</th>
                           <th>İşlem</th>
                         </tr>
                       </thead>
@@ -1489,19 +1489,22 @@ function App() {
                               <input type="text" className="table-input" value={p.id} onChange={(e) => handlePointChange(i, 'id', e.target.value)} />
                             </td>
                             <td style={{ width: '120px' }}>
-                              <input type="number" step="0.01" className="table-input" value={p.y} onChange={(e) => handlePointChange(i, 'y', e.target.value)} />
+                              <input type="number" step="0.01" className="table-input" value={p.yarmaAlani} onChange={(e) => handlePointChange(i, 'yarmaAlani', e.target.value)} />
                             </td>
                             <td style={{ width: '120px' }}>
-                              <input type="number" step="0.01" className="table-input" value={p.x} onChange={(e) => handlePointChange(i, 'x', e.target.value)} />
+                              <input type="number" step="0.01" className="table-input" value={p.dolguAlani} onChange={(e) => handlePointChange(i, 'dolguAlani', e.target.value)} />
                             </td>
                             <td style={{ width: '120px' }}>
-                              <input type="number" step="0.01" className="table-input" value={p.z_mevcut} onChange={(e) => handlePointChange(i, 'z_mevcut', e.target.value)} />
+                              <input type="number" step="0.01" className="table-input" value={p.araUzaklik} onChange={(e) => handlePointChange(i, 'araUzaklik', e.target.value)} />
                             </td>
-                            <td style={{ width: '120px' }}>
-                              <input type="number" step="0.01" className="table-input" value={p.z_proje} onChange={(e) => handlePointChange(i, 'z_proje', e.target.value)} />
+                            <td style={{ width: '120px', color: 'var(--error-color)', fontWeight: 600 }}>
+                              {p.yarmaHacmi?.toFixed(2) || 0}
                             </td>
-                            <td style={{ color: p.z_proje >= p.z_mevcut ? '#4ade80' : '#f87171', fontWeight: 600, width: '100px' }}>
-                              {p.z_proje >= p.z_mevcut ? 'DOLGU' : 'KAZI'}
+                            <td style={{ width: '120px', color: 'var(--accent-color)', fontWeight: 600 }}>
+                              {p.dolguHacmi?.toFixed(2) || 0}
+                            </td>
+                            <td style={{ width: '120px', fontWeight: 'bold' }}>
+                              {p.kumulatifHacim?.toFixed(2) || 0}
                             </td>
                             <td style={{ width: '60px', textAlign: 'center' }}>
                               <button onClick={() => handleDeletePoint(i)} className="btn-icon-small" style={{ color: 'var(--error-color)' }} title="Sil">
@@ -1509,7 +1512,7 @@ function App() {
                               </button>
                             </td>
                           </tr>
-                        )) : <tr><td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Henüz veri yüklenmedi. Tabloya veri girmek için "Nokta Ekle" butonunu kullanabilirsiniz.</td></tr>}
+                        )) : <tr><td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Henüz veri yüklenmedi. Tabloya veri girmek için "Kesit Ekle" butonunu kullanabilirsiniz.</td></tr>}
                       </tbody>
                     </table>
                   </div>
@@ -1549,32 +1552,41 @@ function App() {
                     </button>
                   </div>
 
-                  <section className="glass-card" style={{ marginTop: '2.5rem', position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                      <h3 style={{ margin: 0 }}>3D Kazı İzleme ve Arazi Modeli</h3>
-                      <div style={{ display: 'flex', gap: '10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#3b82f6' }}></div> Dolgu (Mavi)</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#f87171' }}></div> Kazı (Kırmızı)</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#4ade80' }}></div> Düz (Yeşil)</span>
+                  {points.length > 0 && points[0].x !== undefined ? (
+                    <section className="glass-card" style={{ marginTop: '2.5rem', position: 'relative' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h3 style={{ margin: 0 }}>3D Kazı İzleme ve Arazi Modeli</h3>
+                        <div style={{ display: 'flex', gap: '10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#3b82f6' }}></div> Dolgu (Mavi)</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#f87171' }}></div> Kazı (Kırmızı)</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: 10, height: 10, background: '#4ade80' }}></div> Düz (Yeşil)</span>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div style={{ position: 'absolute', top: '70px', right: '30px', zIndex: 10, display: 'flex', gap: '10px' }}>
-                       <button className="btn btn-secondary" onClick={() => setCameraView('top')}>Kuşbakışı</button>
-                       <button className="btn btn-secondary" onClick={() => setCameraView('front')}>Karşıdan</button>
-                    </div>
+                      
+                      <div style={{ position: 'absolute', top: '70px', right: '30px', zIndex: 10, display: 'flex', gap: '10px' }}>
+                         <button className="btn btn-secondary" onClick={() => setCameraView('top')}>Kuşbakışı</button>
+                         <button className="btn btn-secondary" onClick={() => setCameraView('front')}>Karşıdan</button>
+                      </div>
 
-                    <div style={{ height: '500px', background: '#020617', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--glass-border)' }}>
-                      <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
-                        <CameraController view={cameraView} setView={setCameraView} />
-                        <OrbitControls enableDamping={true} />
-                        <Excavation3D points={points} />
-                      </Canvas>
-                    </div>
-                    <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                      * Fare ile döndürebilir, tekerlek ile yakınlaşabilirsiniz. Renkler kazı(kırmızı) ve dolgu(mavi) derinliğini temsil eder.
-                    </p>
-                  </section>
+                      <div style={{ height: '500px', background: '#020617', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--glass-border)' }}>
+                        <Canvas camera={{ position: [30, 30, 30], fov: 40 }}>
+                          <CameraController view={cameraView} setView={setCameraView} />
+                          <OrbitControls enableDamping={true} />
+                          <Excavation3D points={points} />
+                        </Canvas>
+                      </div>
+                      <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                        * Fare ile döndürebilir, tekerlek ile yakınlaşabilirsiniz. Renkler kazı(kırmızı) ve dolgu(mavi) derinliğini temsil eder.
+                      </p>
+                    </section>
+                  ) : (
+                    <section className="glass-card" style={{ marginTop: '2.5rem', textAlign: 'center', padding: '3rem' }}>
+                      <h3 style={{ margin: 0, marginBottom: '1rem' }}>3D Kazı İzleme</h3>
+                      <p style={{ color: 'var(--text-muted)' }}>
+                        Enkesit (End-Area) yöntemiyle alan bazlı hesaplama yapıldığı için 3D koordinat verisi bulunmamaktadır. Görselleştirme yapılamıyor.
+                      </p>
+                    </section>
+                  )}
                 </div>
               )}
 
