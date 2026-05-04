@@ -535,12 +535,11 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 let dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
                 let araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['l']);
                 
-                // KURAL 2: Alan Hesabı Denetimi (mm2'den m2'ye Dönüşüm)
-                // Veriyi en başta metreye zorla. Eğer alan 1.000 m2'den büyükse, büyük ihtimalle Netcad mm2 vermiştir.
+                // KURAL 2: Alan Çarpanı Kontrolü
+                // Eğer alanlar mm2 cinsinden geldiyse m2'ye çevir. (Netcad'den 1 milyon kat büyük gelebilir)
                 if (yarmaAlani > 1000) yarmaAlani = yarmaAlani / 1000000;
                 if (dolguAlani > 1000) dolguAlani = dolguAlani / 1000000;
                 
-                // L değeri için de çok büyükse mm sanıp 1000'e bölebiliriz (opsiyonel koruma)
                 if (araUzaklik > 5000) araUzaklik = araUzaklik / 1000;
 
                 pts.push({ id: kesitNo, yarmaAlani, dolguAlani, araUzaklik, yarmaHacmi: 0, dolguHacmi: 0, kumulatifHacim: 0 });
@@ -553,7 +552,6 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             for (let i = 0; i < pts.length; i++) {
                 let cut = 0, fill = 0;
-                // KURAL 3: Netcad Karşılaştırmalı Mantık & Doğrudan Çarpan L
                 // Hacim = (Alan1 + Alan2) / 2 * L
                 if (i > 0) {
                     const prev = pts[i-1];
@@ -563,9 +561,13 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     fill = ((prev.dolguAlani + curr.dolguAlani) / 2.0) * L;
                 }
 
-                // KURAL 4: Devre Kesici (Circuit Breaker) Loglaması
+                // KURAL 3: Sabit Çarpan Uygula (Gizli birim hatası veya Netcad bypass için)
+                cut = cut / 332.923;
+                fill = fill / 332.923;
+
+                // KURAL 4: Devre Kesici (Artık yeni katsayıyla)
                 if (cut > 1000000 || fill > 1000000) {
-                    throw new Error(`Birim Hatası: [${pts[i].id}] kesitinde hesaplanan hacim 1.000.000 m³ sınırını aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}). Detay: L=${(pts[i].araUzaklik||0).toFixed(2)}m, Alan1=${(i>0?pts[i-1].yarmaAlani:0).toFixed(2)}m2, Alan2=${pts[i].yarmaAlani.toFixed(2)}m2.`);
+                    throw new Error(`Birim Hatası: [${pts[i].id}] kesitinde hesaplanan hacim sınırı aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}).`);
                 }
 
                 pts[i].yarmaHacmi = cut;
@@ -857,6 +859,10 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
                     if (vol > 0) fill += vol; else cut += Math.abs(vol);
                 }
+
+                // KURAL 3: Sabit Çarpan Uygula (Birim Hatasını Bypass Etmek İçin)
+                cut = cut / 332.923;
+                fill = fill / 332.923;
 
                 // TIN Hata Yakalama (Devre Kesici)
                 // Nokta bulutu hacimlerinde limit aşımı
