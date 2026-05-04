@@ -564,6 +564,28 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             });
         };
 
+        const filterXYOutliersIQR = (pts) => {
+            if (pts.length < 10) return pts;
+            const sortedX = [...pts].map(p => p.x).sort((a, b) => a - b);
+            const sortedY = [...pts].map(p => p.y).sort((a, b) => a - b);
+            const q1X = sortedX[Math.floor(pts.length * 0.25)];
+            const q3X = sortedX[Math.floor(pts.length * 0.75)];
+            const iqrX = Math.max(q3X - q1X, 500); 
+            const q1Y = sortedY[Math.floor(pts.length * 0.25)];
+            const q3Y = sortedY[Math.floor(pts.length * 0.75)];
+            const iqrY = Math.max(q3Y - q1Y, 500);
+            
+            const minX = q1X - 3.0 * iqrX;
+            const maxX = q3X + 3.0 * iqrX;
+            const minY = q1Y - 3.0 * iqrY;
+            const maxY = q3Y + 3.0 * iqrY;
+            
+            return pts.filter(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
+        };
+
+        ptsMevcut = filterXYOutliersIQR(ptsMevcut);
+        ptsProje = filterXYOutliersIQR(ptsProje);
+
         ptsMevcut = filterZAndOutliers(ptsMevcut, false);
         ptsProje = filterZAndOutliers(ptsProje, true);
         
@@ -594,13 +616,6 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                  if (p.z_proje === undefined && p.z_mevcut === undefined) p.z_proje = minZ;
                  else if (p.z_proje === undefined) p.z_proje = p.z_mevcut;
              });
-        }
-
-        const dz = maxZ - minZ;
-        if (dz > 50) {
-             if (fs.existsSync(req.files['file_mevcut'][0].path)) fs.unlinkSync(req.files['file_mevcut'][0].path);
-             if (req.files && req.files['file_proje'] && fs.existsSync(req.files['file_proje'][0].path)) fs.unlinkSync(req.files['file_proje'][0].path);
-             return res.status(400).send(`Kazı derinliği 50 metreden fazla (${dz.toFixed(2)}m). Hangi noktalar arasında aşırı kot farkı var? En yüksek (Max Z): ${maxZ.toFixed(2)}m (Nokta: ${maxPoint.id}), En düşük (Min Z): ${minZ.toFixed(2)}m (Nokta: ${minPoint.id}). Noktalarda virgül/ondalık kalibrasyon hatası taşıyor olabilirsiniz.`);
         }
 
         const debugData = {
@@ -644,13 +659,12 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // Zemin-Taban farkının toleransı (Cap > 20m)
+            // Zemin-Taban farkı toleransı kaldırıldı, gerçek hacim hesaplanması için.
             diffPoints.forEach(dp => {
                 const diff = Math.abs(dp.zp - dp.zm);
-                if (diff > 20) {
+                // 100 metreden büyük mantıksız kot farkları varsa uyar.
+                if (diff > 100) {
                     hasHighDiffWarning = true;
-                    if (dp.zp > dp.zm) dp.zp = dp.zm + 20;
-                    else dp.zp = dp.zm - 20;
                 }
             });
 
