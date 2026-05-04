@@ -254,9 +254,11 @@ function App() {
   const [activeTab, setActiveTab] = useState('data');
   const [hakedisData, setHakedisData] = useState([]);
   
-  // Çift Dosya (Mevcut vs Proje) Upload State'leri
+  // Dosya Upload State'leri
   const [mevcutFile, setMevcutFile] = useState(null);
   const [projeFile, setProjeFile] = useState(null);
+  const [enkesitFile, setEnkesitFile] = useState(null);
+  const [uploadMethod, setUploadMethod] = useState('tin'); // 'tin' veya 'enkesit'
   // AUTH STATE
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('auth_token'));
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('auth_username'));
@@ -960,14 +962,22 @@ function App() {
       alert("Lütfen önce bir firma ve iş (proje) seçiniz veya oluşturunuz.");
       return;
     }
-    if (!mevcutFile || !projeFile) {
-      alert("Hesaplama yapabilmek için hem 'Mevcut (İlk Ölçüm)' hem de 'Proje (Sonraki Ölçüm)' dosyalarını seçmelisiniz.");
-      return;
-    }
-
+    
     const formData = new FormData();
-    formData.append('file_mevcut', mevcutFile);
-    formData.append('file_proje', projeFile);
+    if (uploadMethod === 'tin') {
+        if (!mevcutFile || !projeFile) {
+            alert("Nokta Bulutu (TIN) hesabı için hem 'Mevcut' hem de 'Proje' dosyalarını seçmelisiniz.");
+            return;
+        }
+        formData.append('file_mevcut', mevcutFile);
+        formData.append('file_proje', projeFile);
+    } else {
+        if (!enkesitFile) {
+            alert("Enkesit Yöntemi için geçerli bir Excel (.xlsx, .xls) dosyası seçmelisiniz.");
+            return;
+        }
+        formData.append('file_enkesit', enkesitFile);
+    }
     
     setLoading(true);
     try {
@@ -979,6 +989,7 @@ function App() {
       // Temizle
       setMevcutFile(null);
       setProjeFile(null);
+      setEnkesitFile(null);
       
       // AI Analizini tetikle
       performAIAnalysis(resp.data.points || [], resp.data.results?.totalVolume);
@@ -1425,36 +1436,57 @@ function App() {
             <main>
               {activeTab === 'data' && (
                 <section className="glass-card dual-upload-section">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-                    {/* Mevcut Durum */}
-                    <div className={`upload-zone ${mevcutFile ? 'selected' : ''}`} onClick={() => document.getElementById('mevcutFileInput').click()}>
-                      <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
-                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>1. Mevcut Arazi Zemin</h3>
-                      <p style={{ color: 'var(--text-muted)' }}>Mevcut, Kazı Öncesi Ölçüm (.ncz, .ncn, .xls)</p>
-                      {mevcutFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{mevcutFile.name}</div>}
-                      <input id="mevcutFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setMevcutFile(e.target.files[0])} />
-                    </div>
-                    
-                    {/* Proje Durum */}
-                    <div className={`upload-zone ${projeFile ? 'selected' : ''}`} onClick={() => document.getElementById('projeFileInput').click()}>
-                      <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
-                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>2. Proje Arazi Zemin</h3>
-                      <p style={{ color: 'var(--text-muted)' }}>Temel veya Kazı Sonrası Ölçüm (.ncz, .ncn, .xls)</p>
-                      {projeFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{projeFile.name}</div>}
-                      <input id="projeFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setProjeFile(e.target.files[0])} />
-                    </div>
+                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '2rem' }}>
+                      <button onClick={() => setUploadMethod('tin')} className={`btn ${uploadMethod === 'tin' ? 'btn-primary' : 'btn-secondary'}`}>
+                          Nokta Bulutu Yöntemi (TIN)
+                      </button>
+                      <button onClick={() => setUploadMethod('enkesit')} className={`btn ${uploadMethod === 'enkesit' ? 'btn-primary' : 'btn-secondary'}`}>
+                          Enkesit Yöntemi (Excel)
+                      </button>
                   </div>
+
+                  {uploadMethod === 'tin' ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+                        {/* Mevcut Durum */}
+                        <div className={`upload-zone ${mevcutFile ? 'selected' : ''}`} onClick={() => document.getElementById('mevcutFileInput').click()}>
+                          <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
+                          <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>1. Mevcut Arazi Zemin</h3>
+                          <p style={{ color: 'var(--text-muted)' }}>Mevcut, Kazı Öncesi Ölçüm (.ncz, .ncn, .xls)</p>
+                          {mevcutFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{mevcutFile.name}</div>}
+                          <input id="mevcutFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setMevcutFile(e.target.files[0])} />
+                        </div>
+                        
+                        {/* Proje Durum */}
+                        <div className={`upload-zone ${projeFile ? 'selected' : ''}`} onClick={() => document.getElementById('projeFileInput').click()}>
+                          <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
+                          <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>2. Proje Arazi Zemin</h3>
+                          <p style={{ color: 'var(--text-muted)' }}>Temel veya Kazı Sonrası Ölçüm (.ncz, .ncn, .xls)</p>
+                          {projeFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{projeFile.name}</div>}
+                          <input id="projeFileInput" type="file" accept=".xlsx,.xls,.ncn,.ncz" hidden onChange={(e) => setProjeFile(e.target.files[0])} />
+                        </div>
+                      </div>
+                  ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem', marginBottom: '2rem' }}>
+                        <div className={`upload-zone ${enkesitFile ? 'selected' : ''}`} onClick={() => document.getElementById('enkesitFileInput').click()}>
+                          <Upload size={36} color="var(--primary-color)" style={{ marginBottom: '1rem' }} />
+                          <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Enkesit Tablosu Yükle</h3>
+                          <p style={{ color: 'var(--text-muted)' }}>Mevcut ve Proje alanlarını içeren Excel tablosu (.xlsx, .xls)</p>
+                          {enkesitFile && <div style={{marginTop: '1rem', color: '#10b981', fontWeight: 'bold'}}>{enkesitFile.name}</div>}
+                          <input id="enkesitFileInput" type="file" accept=".xlsx,.xls" hidden onChange={(e) => setEnkesitFile(e.target.files[0])} />
+                        </div>
+                      </div>
+                  )}
                   
                   <div style={{ textAlign: 'center' }}>
                     <button 
                        className="btn" 
                        style={{ background: 'var(--primary-color)', fontSize: '1.2rem', padding: '1rem 3rem' }} 
                        onClick={handleFilesUpload}
-                       disabled={loading || !mevcutFile || !projeFile}
+                       disabled={loading || (uploadMethod === 'tin' ? (!mevcutFile || !projeFile) : !enkesitFile)}
                     >
-                      {loading ? 'Sistem İki Dosyayı Karşılaştırıyor...' : 'Mevcut ve Proje Dosyalarını Karşılaştır'}
+                      {loading ? 'Hesaplanıyor...' : 'Hacim Hesapla'}
                     </button>
-                    {(!mevcutFile || !projeFile) && <p style={{marginTop: '1rem', color: 'var(--text-muted)'}}>Devam etmek için her iki ölçümü de yukarıdaki kutulara yüklemelisiniz.</p>}
+                    {uploadMethod === 'tin' && (!mevcutFile || !projeFile) && <p style={{marginTop: '1rem', color: 'var(--text-muted)'}}>Devam etmek için her iki ölçümü de yukarıdaki kutulara yüklemelisiniz.</p>}
                   </div>
                 </section>
               )}

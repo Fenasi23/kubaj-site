@@ -390,10 +390,15 @@ function getZFromTIN(x, y, triangles, points, maxEdgeSq = Infinity) {
 const parseFormattedValue = (val) => {
     if (!val) return 0;
     let str = val.toString().trim();
-    if (str.includes('.') && str.includes(',')) {
-        str = str.replace(/\./g, "").replace(",", ".");
-    } else if (str.includes(',') && !str.includes('.')) {
-        str = str.replace(",", ".");
+    // Sayıların içindeki noktayı (.) ondalık ayırıcı olarak kabul et (Kural 1)
+    // Virgül (,) binlik ayırıcı olabileceği veya yanlışlıkla konulduğu için temizle (Kural 2)
+    // Böylece 500.000 -> 500.0 olarak JavaScript tarafından doğru parse edilir.
+    // 4.500.000,123 formatı Netcad'de nadirdir, ancak gelirse önce virgülü noktaya çevirip öncekileri temizlemek gerekir.
+    // Kullanıcı kuralı: "Eğer bir sayı 500.000 şeklinde geliyorsa bunu 500.0 olarak algıla"
+    if (str.includes(',') && !str.includes('.')) {
+        str = str.replace(/,/g, "."); // Sadece virgül varsa ondalık olabilir
+    } else {
+        str = str.replace(/,/g, ""); // Hem nokta hem virgül varsa veya sadece nokta varsa virgülleri temizle
     }
     return parseFloat(str) || 0;
 };
@@ -491,15 +496,81 @@ const parseNcz = (buffer) => {
     return points;
 };
 
-app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { name: 'file_proje', maxCount: 1 }]), async (req, res) => {
+app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { name: 'file_proje', maxCount: 1 }, { name: 'file_enkesit', maxCount: 1 }]), async (req, res) => {
     const firmId = req.headers['x-firm-id'];
     const jobName = req.headers['x-job-name'] ? decodeURIComponent(req.headers['x-job-name']) : null;
     if (!firmId || !jobName) return res.status(400).send('Firma veya İş seçilmedi.');
-    if (!req.files || !req.files['file_mevcut'] || !req.files['file_proje']) {
-        return res.status(400).send('Lütfen hem Mevcut Durum hem de Proje Durumu dosyalarını yükleyiniz.');
+    
+    const isEnkesitMode = req.files && req.files['file_enkesit'];
+    const isTINMode = req.files && req.files['file_mevcut'] && req.files['file_proje'];
+
+    if (!isEnkesitMode && !isTINMode) {
+        return res.status(400).send('Lütfen geçerli veri dosyalarını yükleyiniz (Enkesit Excel veya Mevcut+Proje).');
     }
     
     try {
+        if (isEnkesitMode) {
+            // === ENKESIT YÖNTEMİ (END-AREA METHOD) ===
+            const fileObj = req.files['file_enkesit'][0];
+            const ext = path.extname(fileObj.originalname).toLowerCase();
+            if (ext !== '.xlsx' && ext !== '.xls') {
+                return res.status(400).send('Enkesit yöntemi için lütfen Excel (.xlsx, .xls) tablosu yükleyin.');
+            }
+
+            const workbook = xlsx.readFile(fileObj.path);
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rawPoints = xlsx.utils.sheet_to_json(sheet);
+            
+            let pts = [];
+            rawPoints.forEach((row, index) => {
+                const lowerRow = {};
+                Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
+                
+                const kesitNo = lowerRow['kesit'] || lowerRow['km'] || lowerRow['nokta no'] || lowerRow['id'] || `K${index+1}`;
+                const yarmaAlani = parseFormattedValue(lowerRow['yarma alanı'] || lowerRow['yarma alan'] || lowerRow['yarma'] || lowerRow['cut area']);
+                const dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
+                const araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['l']);
+                
+                pts.push({ id: kesitNo, yarmaAlani, dolguAlani, araUzaklik, yarmaHacmi: 0, dolguHacmi: 0, kumulatifHacim: 0 });
+            });
+
+            if (pts.length === 0) return res.status(400).send('Excel tablosundan geçerli kesit verisi okunamadı.');
+
+            let totalCut = 0, totalFill = 0, currentCumulative = 0;
+            const warningsList = [];
+
+            for (let i = 0; i < pts.length; i++) {
+                let cut = 0, fill = 0;
+                if (i > 0) {
+                    const prev = pts[i-1];
+                    const curr = pts[i];
+                    const L = curr.araUzaklik || 0; 
+                    cut = ((prev.yarmaAlani + curr.yarmaAlani) / 2) * L;
+                    fill = ((prev.dolguAlani + curr.dolguAlani) / 2) * L;
+                }
+
+                if (cut > 100000 || fill > 100000) {
+                    throw new Error(`Birim Hatası: [${pts[i].id}] kesitinde hesaplanan hacim 100.000 m³ sınırını aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}). Lütfen Netcad tablosundaki alan ve uzaklık değerlerinin doğruluğunu kontrol ediniz.`);
+                }
+
+                pts[i].yarmaHacmi = cut;
+                pts[i].dolguHacmi = fill;
+                totalCut += cut;
+                totalFill += fill;
+                currentCumulative += (fill - cut);
+                pts[i].kumulatifHacim = currentCumulative;
+            }
+
+            const kubajData = { 
+                points: pts, 
+                results: { cutVolume: totalCut, fillVolume: totalFill, totalVolume: totalFill - totalCut, warnings: warningsList, debug: { method: 'End-Area (Enkesit)' } } 
+            };
+            await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
+            if (fs.existsSync(fileObj.path)) fs.unlinkSync(fileObj.path);
+            return res.json(kubajData);
+        }
+
+        // === TIN YÖNTEMİ (NOKTA BULUTU: NCN/NCZ) ===
         const parseFile = (fileObj) => {
             let pts = [];
             const ext = path.extname(fileObj.originalname).toLowerCase();
@@ -607,10 +678,9 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const rangeX = Math.max(...xs) - Math.min(...xs);
             const rangeY = Math.max(...ys) - Math.min(...ys);
             
-            // Eğer X, Y, Z değerleri 1.000.000'dan büyükse ve saha genişliği 20.000'den fazlaysa (20km),
-            // büyük ihtimalle veriler metre değil milimetre cinsindendir. Metrik sisteme sabitle.
-            const isVeryLargeCoords = pts.some(p => p.x > 1000000 || p.y > 1000000);
-            const isMillimeterScale = rangeX > 20000 || rangeY > 20000 || (isVeryLargeCoords && rangeX > 50000);
+            // UTM X 7 hanelidir (örn: 4.500.000). Eğer değer 1.000.000.000'dan büyükse kesinlikle milimetredir.
+            // UTM Y 6 hanelidir (örn: 500.000). Eğer 100.000.000'dan büyükse milimetredir.
+            const isMillimeterScale = pts.some(p => Math.abs(p.x) > 100000000 || Math.abs(p.y) > 100000000);
             
             if (isMillimeterScale) {
                 pts.forEach(p => {
@@ -618,6 +688,16 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     p.y /= 1000;
                 });
             }
+
+            // Z değerleri çok yüksekse (10.000 mm = 10m), Z'leri de metreye çevir
+            const isZMillimeter = pts.some(p => (p.z_mevcut !== undefined && Math.abs(p.z_mevcut) > 10000) || (p.z_proje !== undefined && Math.abs(p.z_proje) > 10000));
+            if (isZMillimeter) {
+                pts.forEach(p => {
+                    if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
+                    if (p.z_proje !== undefined) p.z_proje /= 1000;
+                });
+            }
+
             return pts;
         };
 
@@ -763,10 +843,10 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     if (vol > 0) fill += vol; else cut += Math.abs(vol);
                 }
 
-                // Kesit Alanı Doğrulaması (Circuit Breaker)
-                // Eğer hesaplanan hacim 100.000 m3 değerini aşıyorsa matematiksel taşma varsay ve durdur.
-                if (cut > 100000 || fill > 100000) {
-                    throw new Error(`Birim Hatası: Hesaplanan hacim 100.000 m³ sınırını aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}). Lütfen X, Y, Z koordinatlarının ve referans kotlarının doğruluğunu (metre cinsinden olduğunu) kontrol ediniz.`);
+                // TIN Hata Yakalama (Devre Kesici)
+                // Nokta bulutu hacimlerinde limit aşımı
+                if (cut > 2000000 || fill > 2000000) {
+                    throw new Error(`Birim Hatası: Nokta bulutu hesaplamasında hacim aşırı büyük çıktı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}). X,Y,Z eksenlerinin metrik düzende olduğundan emin olun.`);
                 }
 
                 // Arayüzde gösterilecek son noktaları hazırla
