@@ -610,7 +610,17 @@ function App() {
     return null;
   };
 
-    const navigationItems = [];
+    const navigationItems = [
+    { id: 'kubaj', label: 'Kubaj Analizi', icon: <BarChart3 size={18} /> },
+    { id: 'parsel', label: 'Parsel ve Harita', icon: <MapIcon size={18} /> },
+    { id: 'pointcloud', label: '3D Nokta Bulutu', icon: <Target size={18} /> },
+    { id: 'hakedis', label: 'Hakediş Yönetimi', icon: <FileCheck size={18} /> },
+    { id: 'archive', label: 'İş Takip Paneli', icon: <LayoutDashboard size={18} /> },
+    { id: 'peyzaj', label: 'Peyzaj Mimarı', icon: <TreePine size={18} /> },
+    { id: 'converter', label: 'Format Dönüştürücü', icon: <RefreshCw size={18} /> },
+    { id: 'settings', label: 'Ayarlar', icon: <Settings size={18} /> },
+    { id: 'guide', label: 'Kullanım Kılavuzu', icon: <BookOpen size={18} /> },
+];
 
   const [hakedisDetails, setHakedisDetails] = useState({
     birimFiyat: 0,
