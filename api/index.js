@@ -570,20 +570,14 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             } else if (ext === '.ncn' || ext === '.mcz') {
                 const content = fs.readFileSync(fileObj.path, 'utf-8');
-                // Regex: KM ile başlayan her bloğu yakala
                 const regex = /KM\s*[:=]?\s*([0-9+.,-]+)([\s\S]*?)(?=KM|$)/gi;
                 let match;
                 while ((match = regex.exec(content)) !== null) {
                     const kmRaw = match[1];
                     const dataPart = match[2];
-                    const kmValue = parseKMValue(kmRaw);
-                    
-                    // Veri kısmındaki sayıları ayıkla (Nokta veya virgül ondalık)
+                    const kmValue = Math.round(parseKMValue(kmRaw) * 1000) / 1000; // KM Normalizasyonu
                     const nums = dataPart.match(/[0-9]+([.,][0-9]+)?/g) || [];
                     let cutA = 0, fillA = 0;
-                    
-                    // KM'den sonraki ilk 1-2 sayı genellikle mesafe veya alandır.
-                    // Netcad standardında genelde 2. ve 3. sayılar alanlardır.
                     if (nums.length >= 3) {
                         cutA = parseFormattedValue(nums[1]);
                         fillA = parseFormattedValue(nums[2]);
@@ -593,7 +587,6 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     } else if (nums.length === 1) {
                         cutA = parseFormattedValue(nums[0]);
                     }
-                    
                     if (!isNaN(kmValue)) {
                         pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: cutA, dolguAlani: fillA });
                     }
@@ -602,12 +595,12 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             if (pts.length < 2) return res.status(400).send('Hata: Dosyadan yeterli veri okunamadı.');
 
-            // 1. Sırala ve Konsolide Et
+            // 1. Sırala ve Konsolide Et (Hassas KM Birleştirme)
             pts.sort((a, b) => a.kmValue - b.kmValue);
             const consolidated = [];
             pts.forEach(p => {
                 const last = consolidated[consolidated.length - 1];
-                if (last && Math.abs(last.kmValue - p.kmValue) < 0.001) {
+                if (last && Math.abs(last.kmValue - p.kmValue) < 0.0001) {
                     last.yarmaAlani = Math.max(last.yarmaAlani, p.yarmaAlani);
                     last.dolguAlani = Math.max(last.dolguAlani, p.dolguAlani);
                 } else {
@@ -615,39 +608,13 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // 2. EKSiKSİZ DÖNGÜ VE HACİM HESAPLAMA
+            // 2. HACİM HESAPLAMA (KESİN ARALIK DÖNGÜSÜ)
             let totalC = 0, totalF = 0;
             const round3 = (v) => Math.round(v * 1000) / 1000;
-            let lastProcessedIdx = -1;
-
+            
             for (let i = 0; i < consolidated.length - 1; i++) {
                 const p1 = consolidated[i];
                 const p2 = consolidated[i+1];
-                
-                // MESAFE = Km(n) - Km(n-1)
-                const L = round3(p2.kmValue - p1.kmValue);
-                
-                if (L > 0) {
-                    const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
-                    const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
-                    
-                    totalC = round3(totalC + vC);
-                    totalF = round3(totalF + vF);
-                    
-                    consolidated[i+1].araUzaklik = L;
-                    consolidated[i+1].yarmaHacmi = vC;
-                    consolidated[i+1].dolguHacmi = vF;
-                    lastProcessedIdx = i;
-                }
-                consolidated[i+1].cumulativeCut = totalC;
-                consolidated[i+1].cumulativeFill = totalF;
-                consolidated[i+1].brunner = round3(totalC - totalF);
-            }
-
-            // 3. FENCEPOST ERROR ÇÖZÜMÜ (Son Aralığı Zorla Ekle)
-            if (lastProcessedIdx < consolidated.length - 2 && consolidated.length >= 2) {
-                const p1 = consolidated[consolidated.length - 2];
-                const p2 = consolidated[consolidated.length - 1];
                 const L = round3(p2.kmValue - p1.kmValue);
                 if (L > 0) {
                     const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
@@ -657,14 +624,14 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     p2.araUzaklik = L;
                     p2.yarmaHacmi = vC;
                     p2.dolguHacmi = vF;
-                    p2.cumulativeCut = totalC;
-                    p2.cumulativeFill = totalF;
-                    p2.brunner = round3(totalC - totalF);
                 }
+                p2.cumulativeCut = totalC;
+                p2.cumulativeFill = totalF;
+                p2.brunner = round3(totalC - totalF);
             }
 
-            const sonKesit = consolidated[consolidated.length - 1];
-            console.log("Okunan son KM:", sonKesit.kmValue);
+            const sonP = consolidated[consolidated.length - 1];
+            console.log("!!! KOD AKTİF !!! Okunan Son KM:", sonP.kmValue, "Toplam Yarma:", totalC);
 
             const kubajData = { 
                 points: consolidated, 
@@ -672,8 +639,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     cutVolume: totalC, 
                     fillVolume: totalF, 
                     totalVolume: round3(totalC - totalF), 
-                    log: `HESAPLAMA DOĞRULANDI. Son KM: ${sonKesit.kmValue}, Toplam: ${totalC.toFixed(3)} m³.`,
-                    debug: { method: 'Netcad Absolute Parity v9 - EMERGENCY', lastKM: sonKesit.kmValue, count: consolidated.length } 
+                    log: `!!! KOD GÜNCELLENDİ v10 !!! Son KM: ${sonP.kmValue}, Toplam Yarma: ${totalC.toFixed(3)} m³.`,
+                    debug: { method: 'Netcad Absolute Parity v10 - NUCLEAR', finalKM: sonP.kmValue, count: consolidated.length } 
                 } 
             };
 
