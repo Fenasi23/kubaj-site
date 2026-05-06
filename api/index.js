@@ -569,43 +569,34 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
                 }
             } else if (ext === '.ncn' || ext === '.mcz') {
-                const content = fs.readFileSync(fileObj.path, 'utf-8').trim();
-                // KM bazlı bloklara ayır
-                const blocks = content.split(/KM\s*[:=]?\s*/i);
-                
-                blocks.forEach((block) => {
-                    const trimmed = block.trim();
-                    if (!trimmed) return;
-                    
-                    // Tüm sayısal değerleri ayıkla (0+125.00 formatı dahil)
-                    const nums = trimmed.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
-                    if (nums.length >= 1) {
-                        const kmRaw = nums[0];
-                        const kmValue = parseKMValue(kmRaw);
-                        let cutA = 0, fillA = 0;
-                        
-                        // Netcad MCZ/NCN: KM, [Mesafe], Alan1, Alan2...
-                        // Eğer 3 veya daha fazla sayı varsa, KM'den sonrakileri alan kabul et
-                        if (nums.length >= 4) {
-                            cutA = parseFormattedValue(nums[2]);
-                            fillA = parseFormattedValue(nums[3]);
-                        } else if (nums.length === 3) {
+                const content = fs.readFileSync(fileObj.path, 'utf-8');
+                // Regex: Capture every KM block until the next KM or end of file
+                const regex = /KM\s*[:=]?\s*([0-9+.,-]+)([\s\S]*?)(?=KM|$)/gi;
+                let match;
+                while ((match = regex.exec(content)) !== null) {
+                    const kmRaw = match[1];
+                    const dataPart = match[2];
+                    const kmValue = parseKMValue(kmRaw);
+                    const nums = dataPart.match(/[0-9]+(\.[0-9]+)?(,[0-9]+)?/g) || [];
+                    let cutA = 0, fillA = 0;
+                    if (nums.length >= 2) {
+                        if (nums.length >= 3) {
                             cutA = parseFormattedValue(nums[1]);
                             fillA = parseFormattedValue(nums[2]);
-                        } else if (nums.length === 2) {
-                            cutA = parseFormattedValue(nums[1]);
-                        }
-                        
-                        if (!isNaN(kmValue)) {
-                            pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: cutA, dolguAlani: fillA });
+                        } else {
+                            cutA = parseFormattedValue(nums[0]);
+                            fillA = parseFormattedValue(nums[1]);
                         }
                     }
-                });
+                    if (!isNaN(kmValue)) {
+                        pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: cutA, dolguAlani: fillA });
+                    }
+                }
             }
 
-            if (pts.length < 2) return res.status(400).send('Hata: Dosyadan en az 2 kesit noktası okunmalıdır.');
+            if (pts.length < 2) return res.status(400).send('Hata: Dosyadan yeterli veri okunamadı.');
 
-            // 1. Sırala ve Konsolide Et (Zorunlu)
+            // 1. Sırala ve Konsolide Et
             pts.sort((a, b) => a.kmValue - b.kmValue);
             const consolidated = [];
             pts.forEach(p => {
@@ -618,53 +609,44 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // 2. HACİM HESAPLAMA (Garantici Döngü)
+            // 2. HACİM HESAPLAMA (ZORUNLU n ve n-1 ARALIĞI)
             let totalC = 0, totalF = 0;
             const round3 = (v) => Math.round(v * 1000) / 1000;
-            let lastLog = "";
+            let lastSegInfo = "";
 
-            // Döngü her bir ARALIĞI (interval) hesaplar
             for (let i = 0; i < consolidated.length - 1; i++) {
                 const p1 = consolidated[i];
                 const p2 = consolidated[i+1];
-                
-                // Mesafeyi KM farkından kendimiz hesaplıyoruz (User Rule)
                 const L = round3(p2.kmValue - p1.kmValue);
-                
                 if (L > 0) {
                     const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
                     const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
-                    
                     totalC = round3(totalC + vC);
                     totalF = round3(totalF + vF);
-                    
                     consolidated[i+1].araUzaklik = L;
                     consolidated[i+1].yarmaHacmi = vC;
                     consolidated[i+1].dolguHacmi = vF;
-                    
                     if (i === consolidated.length - 2) {
-                        lastLog = `Son Segment [${p1.kmValue}-${p2.kmValue}]: L=${L}, V=+${vC}`;
+                        lastSegInfo = `Son Aralık [${p1.kmValue}-${p2.kmValue}]: L=${L}, V=+${vC}`;
                     }
                 }
-                
                 consolidated[i+1].cumulativeCut = totalC;
                 consolidated[i+1].cumulativeFill = totalF;
                 consolidated[i+1].brunner = round3(totalC - totalF);
             }
 
-            lastLog = consolidated.length > 1 ? `Son Segment [${consolidated[consolidated.length-2].kmValue}-${consolidated[consolidated.length-1].kmValue}]` : "";
-
+            const finalP = consolidated[consolidated.length - 1];
             const kubajData = { 
                 points: consolidated, 
                 results: { 
                     cutVolume: totalC, 
                     fillVolume: totalF, 
                     totalVolume: round3(totalC - totalF), 
-                    log: `HESAPLAMA TAMAMLANDI: ${lastLog}. Toplam Hacim: ${totalC.toFixed(3)} m³.`,
-                    debug: { method: 'Netcad Absolute Sync', finalKM: consolidated[consolidated.length-1].kmValue, count: consolidated.length } 
+                    log: `HESAPLAMA TAMAMLANDI: ${lastSegInfo}. Toplam: ${totalC.toFixed(3)} m³.`,
+                    debug: { method: 'Netcad Absolute Parity v7', finalKM: finalP.kmValue, count: consolidated.length } 
                 } 
             };
-            
+
             await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
             if (fs.existsSync(fileObj.path)) fs.unlinkSync(fileObj.path);
             return res.json(kubajData);
