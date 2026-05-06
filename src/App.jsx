@@ -1570,6 +1570,52 @@ function App() {
 
                   <AIAssistantCard insights={aiInsights} />
 
+                  {/* Detaylı Kesit Sonuçları Tablosu (Netcad Standartları) */}
+                  {points && points.length > 0 && points[0].yarmaHacmi !== undefined && (
+                    <section className="glass-card" style={{ marginTop: '2rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h3 style={{ margin: 0 }}>Detaylı Kübaj Cetveli (Kesit Bazlı)</h3>
+                        <div className="ai-badge" style={{ margin: 0 }}>
+                          <Info size={14} /> {results.log || 'Veriler Netcad standartlarına göre hesaplanmıştır.'}
+                        </div>
+                      </div>
+                      <div style={{ overflowX: 'auto', maxHeight: '500px' }}>
+                        <table className="hakedis-table" style={{ fontSize: '0.85rem' }}>
+                          <thead style={{ position: 'sticky', top: 0, background: 'var(--sidebar-bg)', zIndex: 10 }}>
+                            <tr>
+                              <th>Kilometre (KM)</th>
+                              <th>Ara Uzaklık (L)</th>
+                              <th style={{ textAlign: 'center' }}>Alan (m²)<br/><small>Yarma / Dolgu</small></th>
+                              <th style={{ textAlign: 'center' }}>Hacim (m³)<br/><small>Yarma / Dolgu</small></th>
+                              <th style={{ textAlign: 'center' }}>Küm. Hacim (m³)<br/><small>Yarma / Dolgu</small></th>
+                              <th style={{ textAlign: 'right' }}>Brunner Değeri</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {points.map((p, idx) => (
+                              <tr key={`res-row-${idx}`}>
+                                <td style={{ fontWeight: 700 }}>{p.id}</td>
+                                <td>{p.araUzaklik ? p.araUzaklik.toFixed(3) : '0.000'} m</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span style={{ color: 'var(--error-color)' }}>{p.yarmaAlani.toFixed(3)}</span> / <span style={{ color: 'var(--accent-color)' }}>{p.dolguAlani.toFixed(3)}</span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span style={{ color: 'var(--error-color)', fontWeight: 600 }}>{p.yarmaHacmi.toFixed(3)}</span> / <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{p.dolguHacmi.toFixed(3)}</span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span style={{ color: 'var(--error-color)', opacity: 0.8 }}>{(p.cumulativeCut || 0).toFixed(3)}</span> / <span style={{ color: 'var(--accent-color)', opacity: 0.8 }}>{(p.cumulativeFill || 0).toFixed(3)}</span>
+                                </td>
+                                <td style={{ textAlign: 'right', fontWeight: 800, color: (p.brunner || 0) >= 0 ? 'var(--primary-color)' : 'var(--error-color)' }}>
+                                  {(p.brunner || 0).toFixed(3)} m³
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
+
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', justifyContent: 'center' }}>
                     <button onClick={() => handleDownload('pdf')} className="btn" style={{ background: '#ef4444' }}>
                       <FileText size={18} /> PDF Rapor

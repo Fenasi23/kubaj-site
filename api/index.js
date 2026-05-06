@@ -517,80 +517,115 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             // === ENKESIT YÖNTEMİ (END-AREA METHOD) ===
             const fileObj = req.files['file_enkesit'][0];
             const ext = path.extname(fileObj.originalname).toLowerCase();
-            if (ext !== '.xlsx' && ext !== '.xls') {
-                return res.status(400).send('Enkesit yöntemi için lütfen Excel (.xlsx, .xls) tablosu yükleyin.');
-            }
-
-            const workbook = xlsx.readFile(fileObj.path);
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rawPoints = xlsx.utils.sheet_to_json(sheet);
             
             let pts = [];
-            rawPoints.forEach((row, index) => {
-                const lowerRow = {};
-                Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
-                
-                const kesitNo = lowerRow['kesit'] || lowerRow['km'] || lowerRow['nokta no'] || lowerRow['id'] || `K${index+1}`;
-                let yarmaAlani = parseFormattedValue(lowerRow['yarma alanı'] || lowerRow['yarma alan'] || lowerRow['yarma'] || lowerRow['cut area']);
-                let dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
-                let araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['l']);
-                
-                // KURAL 2: Alan Çarpanı Kontrolü
-                // Eğer alanlar mm2 cinsinden geldiyse m2'ye çevir. (Netcad'den 1 milyon kat büyük gelebilir)
-                if (yarmaAlani > 1000) yarmaAlani = yarmaAlani / 1000000;
-                if (dolguAlani > 1000) dolguAlani = dolguAlani / 1000000;
-                
-                if (araUzaklik > 5000) araUzaklik = araUzaklik / 1000;
+            let logInfo = { totalLines: 0, kmLinesRead: 0, errors: [] };
 
-                pts.push({ id: kesitNo, yarmaAlani, dolguAlani, araUzaklik, yarmaHacmi: 0, dolguHacmi: 0, kumulatifHacim: 0 });
-            });
+            if (ext === '.xlsx' || ext === '.xls') {
+                const workbook = xlsx.readFile(fileObj.path);
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rawPoints = xlsx.utils.sheet_to_json(sheet);
+                logInfo.totalLines = rawPoints.length;
 
-            if (pts.length === 0) return res.status(400).send('Excel tablosundan geçerli kesit verisi okunamadı.');
+                rawPoints.forEach((row, index) => {
+                    const lowerRow = {};
+                    Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
+                    
+                    const kesitNo = lowerRow['kesit'] || lowerRow['km'] || lowerRow['nokta no'] || lowerRow['id'] || `K${index+1}`;
+                    let yarmaAlani = parseFormattedValue(lowerRow['yarma alanı'] || lowerRow['yarma alan'] || lowerRow['yarma'] || lowerRow['cut area']);
+                    let dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
+                    let araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['l']);
+                    
+                    // KURAL: Eğer alanlar mm2 cinsinden geldiyse m2'ye çevir.
+                    if (yarmaAlani > 100000) yarmaAlani = yarmaAlani / 1000000;
+                    if (dolguAlani > 100000) dolguAlani = dolguAlani / 1000000;
+                    if (araUzaklik > 10000) araUzaklik = araUzaklik / 1000;
 
-            let totalCut = 0, totalFill = 0, currentCumulative = 0;
-            const warningsList = [];
+                    pts.push({ id: kesitNo, yarmaAlani, dolguAlani, araUzaklik, yarmaHacmi: 0, dolguHacmi: 0, cumulativeCut: 0, cumulativeFill: 0, brunner: 0 });
+                    logInfo.kmLinesRead++;
+                });
+            } else if (ext === '.ncn' || ext === '.mcz') {
+                const content = fs.readFileSync(fileObj.path, 'utf-8');
+                const lines = content.split('\n');
+                logInfo.totalLines = lines.length;
+
+                lines.forEach((line, index) => {
+                    const cleanLine = line.trim();
+                    if (!cleanLine) return;
+                    
+                    // Netcad NCN/MCZ formatında "KM" veya sayısal bir başlık ile başlayan satırlar
+                    // Örnek: KM 0.000 5.20 1.10 5.00 (KM, AraUzaklik, YarmaAlani, DolguAlani)
+                    // Veya sadece sayısal sütunlar: 0.000 5.00 12.50 0.00
+                    const parts = cleanLine.split(/\s+/);
+                    if (parts.length >= 4) {
+                        let km, dist, cutA, fillA;
+                        if (parts[0].toUpperCase() === 'KM') {
+                            km = parts[1];
+                            dist = parseFormattedValue(parts[2]);
+                            cutA = parseFormattedValue(parts[3]);
+                            fillA = parseFormattedValue(parts[4] || 0);
+                        } else {
+                            km = parts[0];
+                            dist = parseFormattedValue(parts[1]);
+                            cutA = parseFormattedValue(parts[2]);
+                            fillA = parseFormattedValue(parts[3]);
+                        }
+                        
+                        pts.push({ 
+                            id: km, 
+                            yarmaAlani: cutA, 
+                            dolguAlani: fillA, 
+                            araUzaklik: dist,
+                            yarmaHacmi: 0, dolguHacmi: 0, cumulativeCut: 0, cumulativeFill: 0, brunner: 0 
+                        });
+                        logInfo.kmLinesRead++;
+                    }
+                });
+            } else {
+                return res.status(400).send('Enkesit yöntemi için lütfen Excel (.xlsx, .xls) veya Netcad (.ncn, .mcz) dosyası yükleyin.');
+            }
+
+            if (pts.length === 0) return res.status(400).send('Dosyadan geçerli kesit verisi okunamadı. KM satırlarını kontrol edin.');
+
+            let cumulativeCut = 0, cumulativeFill = 0;
             const round3 = (val) => Math.round(val * 1000) / 1000;
 
             for (let i = 0; i < pts.length; i++) {
-                let cut = 0, fill = 0;
+                let segmentCut = 0, segmentFill = 0;
+                
                 // Hacim = [(Alan1 + Alan2) / 2] * Mesafe (Ortalama Alanlar Yöntemi)
                 if (i > 0) {
                     const prev = pts[i-1];
                     const curr = pts[i];
                     const L = curr.araUzaklik || 0; 
-                    cut = ((prev.yarmaAlani + curr.yarmaAlani) / 2.0) * L;
-                    fill = ((prev.dolguAlani + curr.dolguAlani) / 2.0) * L;
+                    
+                    // Netcad Standart: Her segment için hacim hesapla ve 3 basamağa yuvarla
+                    segmentCut = round3(((prev.yarmaAlani + curr.yarmaAlani) / 2.0) * L);
+                    segmentFill = round3(((prev.dolguAlani + curr.dolguAlani) / 2.0) * L);
                 }
 
-                // KURAL 3: Sabit Çarpan Uygula (Gizli birim hatası veya Netcad bypass için)
-                cut = cut / 332.923;
-                fill = fill / 332.923;
-
-                // Hacim Hesaplama Hassasiyeti (Precision) - Virgülden sonra 3 basamak
-                cut = round3(cut);
-                fill = round3(fill);
-
-                // KURAL 4: Devre Kesici (Artık yeni katsayıyla)
-                if (cut > 1000000 || fill > 1000000) {
-                    throw new Error(`Birim Hatası: [${pts[i].id}] kesitinde hesaplanan hacim sınırı aştı (Kazı: ${cut.toFixed(2)}, Dolgu: ${fill.toFixed(2)}).`);
-                }
-
-                pts[i].yarmaHacmi = cut;
-                pts[i].dolguHacmi = fill;
-                totalCut += cut;
-                totalFill += fill;
-                currentCumulative += (fill - cut);
-                pts[i].kumulatifHacim = round3(currentCumulative);
+                pts[i].yarmaHacmi = segmentCut;
+                pts[i].dolguHacmi = segmentFill;
+                
+                cumulativeCut = round3(cumulativeCut + segmentCut);
+                cumulativeFill = round3(cumulativeFill + segmentFill);
+                
+                pts[i].cumulativeCut = cumulativeCut;
+                pts[i].cumulativeFill = cumulativeFill;
+                pts[i].brunner = round3(cumulativeCut - cumulativeFill);
             }
-
-            // Küsurat Sabitleme (Kalibrasyon)
-            if (totalCut > 0) totalCut = round3(totalCut - 0.032);
-            if (totalFill > 0) totalFill = round3(totalFill - 0.032);
 
             const kubajData = { 
                 points: pts, 
-                results: { cutVolume: totalCut, fillVolume: totalFill, totalVolume: round3(totalFill - totalCut), warnings: warningsList, debug: { method: 'End-Area (Enkesit)' } } 
+                results: { 
+                    cutVolume: cumulativeCut, 
+                    fillVolume: cumulativeFill, 
+                    totalVolume: round3(cumulativeFill - cumulativeCut), 
+                    log: `Dosya Okuma: ${logInfo.kmLinesRead}/${logInfo.totalLines} satır işlendi.`,
+                    debug: { method: 'End-Area (Netcad Standartları)', logInfo } 
+                } 
             };
+            
             await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
             if (fs.existsSync(fileObj.path)) fs.unlinkSync(fileObj.path);
             return res.json(kubajData);
