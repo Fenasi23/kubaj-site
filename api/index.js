@@ -614,7 +614,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             let totalC = 0, totalF = 0;
             const round3 = (v) => Math.round(v * 1000) / 1000;
-            
+            let lastProcessedIdx = -1;
+
             for (let i = 0; i < consolidated.length - 1; i++) {
                 const p1 = consolidated[i];
                 const p2 = consolidated[i+1];
@@ -627,21 +628,43 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     p2.araUzaklik = L;
                     p2.yarmaHacmi = vC;
                     p2.dolguHacmi = vF;
+                    lastProcessedIdx = i;
                 }
                 p2.cumulativeCut = totalC;
                 p2.cumulativeFill = totalF;
                 p2.brunner = round3(totalC - totalF);
             }
 
+            // RECOVERY: Son aralık işleme girmemişse zorla ekle
+            if (consolidated.length >= 2 && lastProcessedIdx < consolidated.length - 2) {
+                const p1 = consolidated[consolidated.length - 2];
+                const p2 = consolidated[consolidated.length - 1];
+                const L = round3(p2.kmValue - p1.kmValue);
+                if (L > 0) {
+                    const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
+                    const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
+                    totalC = round3(totalC + vC);
+                    totalF = round3(totalF + vF);
+                    p2.araUzaklik = L;
+                    p2.yarmaHacmi = vC;
+                    p2.dolguHacmi = vF;
+                    p2.cumulativeCut = totalC;
+                    p2.cumulativeFill = totalF;
+                    p2.brunner = round3(totalC - totalF);
+                }
+            }
+
             const sonP = consolidated[consolidated.length - 1];
+            console.log("!!! KOD AKTİF v12 !!! Son KM:", sonP.kmValue, "Total:", totalC);
+
             const kubajData = { 
                 points: consolidated, 
                 results: { 
                     cutVolume: totalC, 
                     fillVolume: totalF, 
                     totalVolume: round3(totalC - totalF), 
-                    log: `!!! KOD GÜNCELLENDİ v11 - SON ŞANS !!! Son KM: ${sonP.kmValue}, Toplam: ${totalC.toFixed(3)} m³.`,
-                    debug: { method: 'Netcad Absolute Parity v11 - ULTIMATUM', finalKM: sonP.kmValue, count: consolidated.length } 
+                    log: `!!! KOD GÜNCELLENDİ v12 - GÜVENLİ DÖNGÜ !!! Son KM: ${sonP.kmValue}, Toplam: ${totalC.toFixed(3)} m³.`,
+                    debug: { method: 'Netcad Absolute Parity v12 - FINAL SAFE', finalKM: sonP.kmValue, count: consolidated.length } 
                 } 
             };
 
