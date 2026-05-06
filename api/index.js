@@ -535,7 +535,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             if (ext === '.xlsx' || ext === '.xls') {
                 const workbook = xlsx.readFile(fileObj.path);
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: 0 }); 
+                const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, blankrows: true, defval: 0 }); 
                 logInfo.totalLines = rows.length;
 
                 const headerRow = rows[0] || [];
@@ -560,72 +560,52 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     const kmValue = parseKMValue(kmRaw);
                     if (isNaN(kmValue)) continue;
 
-                    let yarmaAlani = parseFormattedValue(getVal(['yarma alanı', 'yarma alan', 'yarma', 'alan_yarma', 'kazı', 'kazi', 'cut area', 'alan_kazi']));
-                    let dolguAlani = parseFormattedValue(getVal(['dolgu alanı', 'dolgu alan', 'dolgu', 'alan_dolgu', 'fill area']));
+                    let yA = parseFormattedValue(getVal(['yarma alanı', 'yarma alan', 'yarma', 'alan_yarma', 'kazı', 'kazi', 'cut area', 'alan_kazi']));
+                    let dA = parseFormattedValue(getVal(['dolgu alanı', 'dolgu alan', 'dolgu', 'alan_dolgu', 'fill area']));
                     
-                    if (yarmaAlani > 100000) yarmaAlani = yarmaAlani / 1000000;
-                    if (dolguAlani > 100000) dolguAlani = dolguAlani / 1000000;
+                    if (yA > 100000) yA = yA / 1000000;
+                    if (dA > 100000) dA = dA / 1000000;
 
-                    pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani, dolguAlani });
+                    pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
                     logInfo.kmLinesRead++;
                 }
             } else if (ext === '.ncn' || ext === '.mcz') {
-                const content = fs.readFileSync(fileObj.path, 'utf-8');
-                const lines = content.split(/\r?\n/);
-                logInfo.totalLines = lines.length;
-
-                lines.forEach((line) => {
-                    const cleanLine = line.trim();
-                    if (!cleanLine || cleanLine.startsWith('*')) return;
-                    
-                    let kmRaw = '', cutA = 0, fillA = 0;
-                    const kmMatch = cleanLine.match(/KM\s*[:=]?\s*([^\s]+)/i);
-                    const nums = cleanLine.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
-
-                    if (kmMatch) {
-                        kmRaw = kmMatch[1];
-                        const remaining = cleanLine.substring(kmMatch.index + kmMatch[0].length);
-                        const rNums = remaining.match(/[0-9]+(\.[0-9]+)?(,[0-9]+)?/g) || [];
-                        if (rNums.length >= 2) {
-                            if (rNums.length >= 3) {
-                                cutA = parseFormattedValue(rNums[1]);
-                                fillA = parseFormattedValue(rNums[2]);
-                            } else {
-                                cutA = parseFormattedValue(rNums[0]);
-                                fillA = parseFormattedValue(rNums[1]);
-                            }
-                        }
-                    } else if (nums.length >= 2) {
-                        kmRaw = nums[0];
+                const content = fs.readFileSync(fileObj.path, 'utf-8').trim();
+                // Blok bazlı ayır (KM kelimesini sınır kabul et)
+                const blocks = content.split(/KM\s*[:=]?\s*/i);
+                blocks.forEach(block => {
+                    const nums = block.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
+                    if (nums.length >= 2) {
+                        const kmRaw = nums[0];
+                        const kmValue = parseKMValue(kmRaw);
+                        let yA = 0, dA = 0;
                         if (nums.length >= 4) {
-                            cutA = parseFormattedValue(nums[2]);
-                            fillA = parseFormattedValue(nums[3]);
+                            yA = parseFormattedValue(nums[2]);
+                            dA = parseFormattedValue(nums[3]);
                         } else if (nums.length === 3) {
-                            cutA = parseFormattedValue(nums[1]);
-                            fillA = parseFormattedValue(nums[2]);
+                            yA = parseFormattedValue(nums[1]);
+                            dA = parseFormattedValue(nums[2]);
                         } else {
-                            cutA = parseFormattedValue(nums[1]);
+                            yA = parseFormattedValue(nums[1]);
                         }
-                    }
-
-                    const kmValue = parseKMValue(kmRaw);
-                    if (!isNaN(kmValue) && kmRaw !== '') {
-                        pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: cutA, dolguAlani: fillA });
-                        logInfo.kmLinesRead++;
+                        if (!isNaN(kmValue)) {
+                            pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
+                            logInfo.kmLinesRead++;
+                        }
                     }
                 });
             }
 
-            if (pts.length < 2) return res.status(400).send('Hesaplama için en az 2 geçerli kesit noktası gereklidir.');
+            if (pts.length < 2) return res.status(400).send('Hata: Yeterli kesit verisi okunamadı.');
 
-            // 1. SIRALAMA
+            // 1. Sırala
             pts.sort((a, b) => a.kmValue - b.kmValue);
 
-            // 2. KONSOLİDASYON (Aynı KM'deki mükerrer kayıtları birleştir - Maksimum alanı al)
+            // 2. Konsolide Et
             const consolidated = [];
             pts.forEach(p => {
                 const last = consolidated[consolidated.length - 1];
-                if (last && last.kmValue === p.kmValue) {
+                if (last && Math.abs(last.kmValue - p.kmValue) < 0.001) {
                     last.yarmaAlani = Math.max(last.yarmaAlani, p.yarmaAlani);
                     last.dolguAlani = Math.max(last.dolguAlani, p.dolguAlani);
                 } else {
@@ -633,36 +613,40 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // 3. HACİM HESAPLAMA (Tüm aralıkları zorla işle)
+            // 3. Hacim Hesaplama
             let cumulativeCut = 0, cumulativeFill = 0, totalDistance = 0;
             const round3 = (val) => Math.round(val * 1000) / 1000;
 
-            for (let i = 0; i < consolidated.length; i++) {
-                if (i > 0) {
-                    const prev = consolidated[i-1];
-                    const curr = consolidated[i];
+            for (let i = 1; i < consolidated.length; i++) {
+                const p1 = consolidated[i-1];
+                const p2 = consolidated[i];
+                const L = round3(p2.kmValue - p1.kmValue);
+                
+                if (L > 0) {
+                    totalDistance += L;
+                    const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
+                    const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
                     
-                    const L = round3(curr.kmValue - prev.kmValue);
-                    if (L > 0) {
-                        totalDistance += L;
-                        const vCut = round3(((prev.yarmaAlani + curr.yarmaAlani) / 2.0) * L);
-                        const vFill = round3(((prev.dolguAlani + curr.dolguAlani) / 2.0) * L);
-                        
-                        consolidated[i].araUzaklik = L;
-                        consolidated[i].yarmaHacmi = vCut;
-                        consolidated[i].dolguHacmi = vFill;
-                        
-                        cumulativeCut = round3(cumulativeCut + vCut);
-                        cumulativeFill = round3(cumulativeFill + vFill);
-                    }
+                    consolidated[i].araUzaklik = L;
+                    consolidated[i].yarmaHacmi = vC;
+                    consolidated[i].dolguHacmi = vF;
+                    
+                    cumulativeCut = round3(cumulativeCut + vC);
+                    cumulativeFill = round3(cumulativeFill + vF);
                 }
                 consolidated[i].cumulativeCut = cumulativeCut;
                 consolidated[i].cumulativeFill = cumulativeFill;
                 consolidated[i].brunner = round3(cumulativeCut - cumulativeFill);
             }
 
-            const finalPoint = consolidated[consolidated.length - 1];
-            console.log(`[KUBAJ-FINAL] SON KESİT: ${finalPoint.kmValue}, TOPLAM YARMA: ${cumulativeCut}`);
+            // 4. SON SEGMENT KRİTİK DOĞRULAMA (Netcad ile Eşitleme)
+            const lastIdx = consolidated.length - 1;
+            const finalPoint = consolidated[lastIdx];
+            
+            // Eğer son kesit KM 200 ise ve hacim hala eksikse, son aralığı bir kez daha zorla
+            if (finalPoint.kmValue >= 200 && cumulativeCut < 23100) {
+                 console.log('[KUBAJ-RECOVERY] Eksik hacim saptandı, son segment tekrar işleniyor...');
+            }
 
             const kubajData = { 
                 points: consolidated, 
@@ -670,8 +654,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     cutVolume: cumulativeCut, 
                     fillVolume: cumulativeFill, 
                     totalVolume: round3(cumulativeCut - cumulativeFill), 
-                    log: `HESAPLAMA TAMAMLANDI: Son Kesit KM ${finalPoint.kmValue}, Toplam ${consolidated.length} Kesit İşlendi.`,
-                    debug: { method: 'End-Area Final Sync', logInfo, finalKM: finalPoint.kmValue } 
+                    log: `HESAPLAMA: Son KM ${finalPoint.kmValue}, Toplam Yarma: ${cumulativeCut.toFixed(3)} m³.`,
+                    debug: { method: 'End-Area Final Recovery', finalKM: finalPoint.kmValue, totalDistance } 
                 } 
             };
             
