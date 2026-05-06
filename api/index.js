@@ -515,141 +515,134 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         if (isEnkesitMode) {
             const fileObj = req.files['file_enkesit'][0];
             const ext = path.extname(fileObj.originalname).toLowerCase();
-            let pts = [];
+            let rawPoints = [];
 
-            const parseKMValue = (kmStr) => {
-                if (typeof kmStr === 'number') return kmStr;
-                if (!kmStr) return 0;
-                const s = kmStr.toString().trim().replace(/ /g, '');
-                if (s.includes('+')) {
-                    const parts = s.split('+');
-                    const k = parseFloat(parts[0]) || 0;
-                    const m = parseFloat(parts[1].replace(',', '.')) || 0;
-                    return (k * 1000) + m;
+            // Kural 5: KM formatını düzelt "0+12500" -> 12500
+            const parseKM = (s) => {
+                if (typeof s === 'number') return s;
+                const str = String(s || '').trim().replace(/ /g, '');
+                if (str.includes('+')) {
+                    const parts = str.split('+');
+                    return (parseFloat(parts[0]) || 0) * 1000 + (parseFloat(parts[1].replace(',', '.')) || 0);
                 }
-                return parseFloat(s.replace(',', '.')) || 0;
+                return parseFloat(str.replace(',', '.')) || 0;
             };
 
             if (ext === '.xlsx' || ext === '.xls') {
                 const workbook = xlsx.readFile(fileObj.path);
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, blankrows: true, defval: 0 }); 
+                const data = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: 0 });
 
-                const headerRow = rows[0] || [];
-                const colIdx = {};
-                headerRow.forEach((h, i) => {
-                    if (h) colIdx[h.toString().toLowerCase().trim().replace(/[ ()]/g, '_')] = i;
-                });
+                const headers = data[0] || [];
+                const colMap = {};
+                headers.forEach((h, i) => { if(h) colMap[h.toString().toLowerCase().trim().replace(/[ ()]/g, '_')] = i; });
 
-                for (let r = 1; r < rows.length; r++) {
-                    const row = rows[r];
+                for (let r = 1; r < data.length; r++) {
+                    const row = data[r];
                     if (!row || row.length === 0) continue;
-                    
-                    const getVal = (names) => {
-                        for (let name of names) {
-                            const n = name.toLowerCase().replace(/[ ()]/g, '_').trim();
-                            if (colIdx[n] !== undefined) return row[colIdx[n]];
-                            const variations = [n, n + '_m2', n + '_m_', 'alan_' + n, 'toplam_' + n];
-                            for (let v of variations) {
-                                if (colIdx[v] !== undefined) return row[colIdx[v]];
-                            }
+
+                    const getVal = (keys) => {
+                        for (let k of keys) {
+                            const normalized = k.toLowerCase().replace(/[ ()]/g, '_').trim();
+                            const variants = [normalized, normalized + '_m2', 'alan_' + normalized, 'toplam_' + normalized];
+                            for (let v of variants) if (colMap[v] !== undefined) return row[colMap[v]];
                         }
                         return null;
                     };
 
-                    const kmRaw = getVal(['km', 'kilometre', 'kesit', 'nokta', 'id', 'station', 'km_no']) || row[0];
-                    const kmValue = parseKMValue(kmRaw);
-                    if (isNaN(kmValue)) continue;
+                    const km = parseKM(getVal(['km', 'kilometre', 'kesit', 'station', 'id']) || row[0]);
+                    const yarma = parseFormattedValue(getVal(['yarma', 'kazı', 'cut', 'kazi_alanı', 'alan_yarma']));
+                    const dolgu = parseFormattedValue(getVal(['dolgu', 'fill', 'dolgu_alanı', 'alan_dolgu']));
 
-                    const yarma = parseFormattedValue(getVal(['yarma', 'yarma_alanı', 'kazı', 'kazi', 'cut', 'cut_area', 'alan_yarma', 'alan_kazi']));
-                    const dolgu = parseFormattedValue(getVal(['dolgu', 'dolgu_alanı', 'fill', 'fill_area', 'alan_dolgu', 'dolgu_alani', 'toplam_dolgu', 'dolgu_m2']));
-
-                    pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yarma, dolguAlani: dolgu });
+                    if (!isNaN(km)) rawPoints.push({ km, yarma, dolgu });
                 }
             } else {
                 const content = fs.readFileSync(fileObj.path, 'utf-8');
                 const regex = /KM\s*[:=]?\s*([0-9+.,-]+)([\s\S]*?)(?=KM|$)/gi;
-                let match;
-                while ((match = regex.exec(content)) !== null) {
-                    const kmRaw = match[1];
-                    const dataPart = match[2];
-                    const kmValue = parseKMValue(kmRaw);
-                    const nums = dataPart.match(/[0-9]+([.,][0-9]+)?/g) || [];
-                    let yA = 0, dA = 0;
-                    if (nums.length >= 3) {
-                        yA = parseFormattedValue(nums[1]);
-                        dA = parseFormattedValue(nums[2]);
-                    } else if (nums.length === 2) {
-                        yA = parseFormattedValue(nums[0]);
-                        dA = parseFormattedValue(nums[1]);
-                    } else if (nums.length === 1) {
-                        yA = parseFormattedValue(nums[0]);
-                    }
-                    if (!isNaN(kmValue)) {
-                        pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
-                    }
+                let m;
+                while ((m = regex.exec(content)) !== null) {
+                    const km = parseKM(m[1]);
+                    const nums = m[2].match(/[0-9]+([.,][0-9]+)?/g) || [];
+                    let yarma = 0, dolgu = 0;
+                    if (nums.length >= 3) { yarma = parseFormattedValue(nums[1]); dolgu = parseFormattedValue(nums[2]); }
+                    else if (nums.length === 2) { yarma = parseFormattedValue(nums[0]); dolgu = parseFormattedValue(nums[1]); }
+                    if (!isNaN(km)) rawPoints.push({ km, yarma, dolgu });
                 }
             }
 
-            if (pts.length < 2) return res.status(400).send('Hata: Yeterli veri okunamadı.');
+            if (rawPoints.length < 2) return res.status(400).send('Hata: Yeterli kesit verisi bulunamadı.');
 
-            pts.sort((a, b) => a.kmValue - b.kmValue);
-            const consolidated = [];
-            pts.forEach(p => {
-                const last = consolidated[consolidated.length - 1];
-                if (last && Math.abs(last.kmValue - p.kmValue) < 0.001) {
-                    last.yarmaAlani = Math.max(last.yarmaAlani, p.yarmaAlani);
-                    last.dolguAlani = Math.max(last.dolguAlani, p.dolguAlani);
+            // 1. Sırala ve Konsolide Et
+            rawPoints.sort((a, b) => a.km - b.km);
+            const pts = [];
+            rawPoints.forEach(p => {
+                const last = pts[pts.length - 1];
+                if (last && Math.abs(last.km - p.km) < 0.001) {
+                    last.yarma = Math.max(last.yarma, p.yarma);
+                    last.dolgu = Math.max(last.dolgu, p.dolgu);
                 } else {
-                    consolidated.push({ ...p, araUzaklik: 0, yarmaHacmi: 0, dolguHacmi: 0, cumulativeCut: 0, cumulativeFill: 0, brunner: 0 });
+                    pts.push({ ...p, L: 0, vYarma: 0, vDolgu: 0, cYarma: 0, cDolgu: 0 });
                 }
             });
 
-            let tYarma = 0, tDolgu = 0;
-            const round3 = (v) => Math.round(v * 1000) / 1000;
-            let debugLog = "DEBUG (İLK 5 SEGMENT):\n";
+            // 2. ULTIMATUM HESAPLAMA MOTORU (v15)
+            let totalY = 0, totalD = 0;
+            const r3 = (v) => Math.round(v * 1000) / 1000;
+            let debugStr = "--- v15 ULTIMATUM DEBUG ---\n";
 
-            for (let i = 0; i < consolidated.length - 1; i++) {
-                const s1 = consolidated[i];
-                const s2 = consolidated[i+1];
+            for (let i = 0; i < pts.length - 1; i++) {
+                const p1 = pts[i];
+                const p2 = pts[i+1];
                 
-                const L = round3(s2.kmValue - s1.kmValue);
+                // Kural 4: L = km(i+1) - km(i)
+                const L = r3(p2.km - p1.km);
                 
                 if (L > 0) {
-                    const vY = round3(((s1.yarmaAlani + s2.yarmaAlani) / 2.0) * L);
-                    const vD = round3(((s1.dolguAlani + s2.dolguAlani) / 2.0) * L);
+                    // Kural 3: V = ((A1 + A2) / 2) * L
+                    const vY = r3(((p1.yarma + p2.yarma) / 2.0) * L);
+                    const vD = r3(((p1.dolgu + p2.dolgu) / 2.0) * L);
                     
-                    tYarma = round3(tYarma + vY);
-                    tDolgu = round3(tDolgu + vD);
+                    totalY = r3(totalY + vY);
+                    totalD = r3(totalD + vD);
                     
-                    s2.araUzaklik = L;
-                    s2.yarmaHacmi = vY;
-                    s2.dolguHacmi = vD;
+                    p2.L = L;
+                    p2.vYarma = vY;
+                    p2.vDolgu = vD;
 
-                    if (i < 5) {
-                        debugLog += `SEGMENT ${i+1}: KM ${s1.kmValue}->${s2.kmValue} | L=${L} | A1=${s1.yarmaAlani} A2=${s2.yarmaAlani} | V_Yarma=${vY} m3\n`;
+                    // Kural 8: İlk 3 segment debug
+                    if (i < 3) {
+                        debugStr += `SEG ${i+1}: KM ${p1.km}->${p2.km} | L=${L} | A1=${p1.yarma} A2=${p2.yarma} | V=${vY} m3\n`;
                     }
                 }
-                s2.cumulativeCut = tYarma;
-                s2.cumulativeFill = tDolgu;
-                s2.brunner = round3(tYarma - tDolgu);
+                p2.cYarma = totalY;
+                p2.cDolgu = totalD;
             }
 
-            console.log(debugLog);
-            const son = consolidated[consolidated.length - 1];
+            console.log(debugStr);
+
+            // Kural 9: Otomatik Hata Kontrolü
+            const isError = totalY < 20000; 
+            const statusMsg = isError ? "HESAPLAMA HATALI (DÜŞÜK HACİM)" : "HESAPLAMA BAŞARILI";
 
             const kubajData = { 
-                points: consolidated, 
+                points: pts.map(p => ({ 
+                    id: p.km.toString(), 
+                    kmValue: p.km, 
+                    yarmaAlani: p.yarma, 
+                    dolguAlani: p.dolgu,
+                    araUzaklik: p.L,
+                    yarmaHacmi: p.vYarma,
+                    dolguHacmi: p.vDolgu,
+                    cumulativeCut: p.cYarma,
+                    cumulativeFill: p.cDolgu,
+                    brunner: r3(p.cYarma - p.cDolgu)
+                })), 
                 results: { 
-                    cutVolume: tYarma, 
-                    fillVolume: tDolgu, 
-                    totalVolume: round3(tYarma - tDolgu), 
-                    log: `HESAPLAMA TAMAMLANDI (v14). Son KM: ${son.kmValue}, Toplam: ${tYarma.toFixed(3)} m³.`,
-                    debug: { 
-                        method: 'Netcad Engineering Standard v14', 
-                        info: debugLog.split('\n').slice(0, 6),
-                        magnitudeWarning: tYarma < 1000 ? "UYARI: Sonuç beklenenden küçük çıktı, birimleri kontrol edin." : "Tamam"
-                    } 
+                    cutVolume: totalY, 
+                    fillVolume: totalD, 
+                    totalVolume: r3(totalY - totalD), 
+                    log: `!!! v15 ULTIMATUM AKTİF !!! ${statusMsg}. Toplam Yarma: ${totalY.toLocaleString('tr-TR')} m³.`,
+                    debug: { method: 'Netcad Ultimatum v15', segments: debugStr.split('\n').slice(1, 5) }
                 } 
             };
 
