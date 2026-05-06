@@ -609,41 +609,68 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // 2. HACİM HESAPLAMA (ZORUNLU n ve n-1 ARALIĞI)
+            // 2. EKSiKSİZ DÖNGÜ VE HACİM HESAPLAMA
             let totalC = 0, totalF = 0;
             const round3 = (v) => Math.round(v * 1000) / 1000;
-            let lastSegInfo = "";
+            let lastProcessedKM = 0;
 
+            // Kesitler arası hacim hesaplama
             for (let i = 0; i < consolidated.length - 1; i++) {
                 const p1 = consolidated[i];
                 const p2 = consolidated[i+1];
+                
+                // KURAL: Mesafeyi Km(n) - Km(n-1) yaparak hesapla
                 const L = round3(p2.kmValue - p1.kmValue);
+                
                 if (L > 0) {
                     const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
                     const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
+                    
                     totalC = round3(totalC + vC);
                     totalF = round3(totalF + vF);
+                    
                     consolidated[i+1].araUzaklik = L;
                     consolidated[i+1].yarmaHacmi = vC;
                     consolidated[i+1].dolguHacmi = vF;
-                    if (i === consolidated.length - 2) {
-                        lastSegInfo = `Son Aralık [${p1.kmValue}-${p2.kmValue}]: L=${L}, V=+${vC}`;
-                    }
+                    lastProcessedKM = p2.kmValue;
                 }
+                
                 consolidated[i+1].cumulativeCut = totalC;
                 consolidated[i+1].cumulativeFill = totalF;
                 consolidated[i+1].brunner = round3(totalC - totalF);
             }
 
-            const finalP = consolidated[consolidated.length - 1];
+            // 3. SON KESİT KONTROLÜ (Zorla Ekleme)
+            const sonKesit = consolidated[consolidated.length - 1];
+            const birOnceki = consolidated[consolidated.length - 2];
+            
+            console.log("Okunan son KM:", sonKesit.kmValue);
+            
+            // Eğer son kesit işleme girmemişse (L > 0 kontrolünden veya döngüden dolayı)
+            if (lastProcessedKM < sonKesit.kmValue && birOnceki) {
+                const L_last = round3(sonKesit.kmValue - birOnceki.kmValue);
+                const vC_last = round3(((birOnceki.yarmaAlani + sonKesit.yarmaAlani) / 2.0) * L_last);
+                const vF_last = round3(((birOnceki.dolguAlani + sonKesit.dolguAlani) / 2.0) * L_last);
+                
+                totalC = round3(totalC + vC_last);
+                totalF = round3(totalF + vF_last);
+                
+                sonKesit.araUzaklik = L_last;
+                sonKesit.yarmaHacmi = vC_last;
+                sonKesit.dolguHacmi = vF_last;
+                sonKesit.cumulativeCut = totalC;
+                sonKesit.cumulativeFill = totalF;
+                sonKesit.brunner = round3(totalC - totalF);
+            }
+
             const kubajData = { 
                 points: consolidated, 
                 results: { 
                     cutVolume: totalC, 
                     fillVolume: totalF, 
                     totalVolume: round3(totalC - totalF), 
-                    log: `HESAPLAMA TAMAMLANDI: ${lastSegInfo}. Toplam: ${totalC.toFixed(3)} m³.`,
-                    debug: { method: 'Netcad Absolute Parity v7', finalKM: finalP.kmValue, count: consolidated.length } 
+                    log: `HESAPLAMA TAMAMLANDI. Son KM: ${sonKesit.kmValue}, Toplam Yarma: ${totalC.toFixed(3)} m³.`,
+                    debug: { method: 'Eksiksiz Döngü v8', lastKM: sonKesit.kmValue, targetReached: totalC >= 23600 } 
                 } 
             };
 
