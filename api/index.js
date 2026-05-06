@@ -577,24 +577,22 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     const trimmed = block.trim();
                     if (!trimmed) return;
                     
-                    // Sayısal değerleri topla
+                    // Tüm sayısal değerleri ayıkla (0+125.00 formatı dahil)
                     const nums = trimmed.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
                     if (nums.length >= 1) {
                         const kmRaw = nums[0];
                         const kmValue = parseKMValue(kmRaw);
                         let cutA = 0, fillA = 0;
                         
-                        // Netcad MCZ/NCN varyasyonlarına göre alanları bul
+                        // Netcad MCZ/NCN: KM, [Mesafe], Alan1, Alan2...
+                        // Eğer 3 veya daha fazla sayı varsa, KM'den sonrakileri alan kabul et
                         if (nums.length >= 4) {
-                            // KM, L, Yarma, Dolgu
                             cutA = parseFormattedValue(nums[2]);
                             fillA = parseFormattedValue(nums[3]);
                         } else if (nums.length === 3) {
-                            // KM, Yarma, Dolgu
                             cutA = parseFormattedValue(nums[1]);
                             fillA = parseFormattedValue(nums[2]);
                         } else if (nums.length === 2) {
-                            // KM, Yarma
                             cutA = parseFormattedValue(nums[1]);
                         }
                         
@@ -603,22 +601,11 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                         }
                     }
                 });
-
-                // Alternatif: Satır bazlı yedek okuma (Eğer blok okuma başarısızsa)
-                if (pts.length < 2) {
-                    content.split(/\n/).forEach(line => {
-                        const nums = line.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
-                        if (nums.length >= 2) {
-                            const kmValue = parseKMValue(nums[0]);
-                            if (!isNaN(kmValue)) pts.push({ id: nums[0], kmValue, yarmaAlani: parseFormattedValue(nums[1]), dolguAlani: parseFormattedValue(nums[2] || 0) });
-                        }
-                    });
-                }
             }
 
-            if (pts.length < 2) return res.status(400).send('Hata: Dosyadan kesit verisi okunamadı.');
+            if (pts.length < 2) return res.status(400).send('Hata: Dosyadan en az 2 kesit noktası okunmalıdır.');
 
-            // 1. Sırala ve Benzersiz Yap
+            // 1. Sırala ve Konsolide Et (Zorunlu)
             pts.sort((a, b) => a.kmValue - b.kmValue);
             const consolidated = [];
             pts.forEach(p => {
@@ -631,42 +618,51 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // 2. Hacim Hesaplama (Kesin Döngü)
-            let cumulativeCut = 0, cumulativeFill = 0;
-            const round3 = (val) => Math.round(val * 1000) / 1000;
+            // 2. HACİM HESAPLAMA (Garantici Döngü)
+            let totalC = 0, totalF = 0;
+            const round3 = (v) => Math.round(v * 1000) / 1000;
+            let lastLog = "";
 
-            for (let i = 1; i < consolidated.length; i++) {
-                const p1 = consolidated[i-1];
-                const p2 = consolidated[i];
+            // Döngü her bir ARALIĞI (interval) hesaplar
+            for (let i = 0; i < consolidated.length - 1; i++) {
+                const p1 = consolidated[i];
+                const p2 = consolidated[i+1];
+                
+                // Mesafeyi KM farkından kendimiz hesaplıyoruz (User Rule)
                 const L = round3(p2.kmValue - p1.kmValue);
                 
                 if (L > 0) {
                     const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
                     const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
                     
-                    consolidated[i].araUzaklik = L;
-                    consolidated[i].yarmaHacmi = vC;
-                    consolidated[i].dolguHacmi = vF;
+                    totalC = round3(totalC + vC);
+                    totalF = round3(totalF + vF);
                     
-                    cumulativeCut = round3(cumulativeCut + vC);
-                    cumulativeFill = round3(cumulativeFill + vF);
+                    consolidated[i+1].araUzaklik = L;
+                    consolidated[i+1].yarmaHacmi = vC;
+                    consolidated[i+1].dolguHacmi = vF;
+                    
+                    if (i === consolidated.length - 2) {
+                        lastLog = `Son Segment [${p1.kmValue}-${p2.kmValue}]: L=${L}, V=+${vC}`;
+                    }
                 }
-                consolidated[i].cumulativeCut = cumulativeCut;
-                consolidated[i].cumulativeFill = cumulativeFill;
-                consolidated[i].brunner = round3(cumulativeCut - cumulativeFill);
+                
+                consolidated[i+1].cumulativeCut = totalC;
+                consolidated[i+1].cumulativeFill = totalF;
+                consolidated[i+1].brunner = round3(totalC - totalF);
             }
 
             const finalKM = consolidated[consolidated.length - 1].kmValue;
-            console.log(`[KUBAJ-SUCCESS] SON KM: ${finalKM}, TOPLAM: ${cumulativeCut}`);
+            console.log(`[NETCAD-MATCH] SON KM: ${finalKM}, TOPLAM YARMA: ${totalC}, ${lastLog}`);
 
             const kubajData = { 
                 points: consolidated, 
                 results: { 
-                    cutVolume: cumulativeCut, 
-                    fillVolume: cumulativeFill, 
-                    totalVolume: round3(cumulativeCut - cumulativeFill), 
-                    log: `HESAPLAMA TAMAMLANDI: Son Kesit KM ${finalKM}, Toplam Hacim: ${cumulativeCut.toFixed(3)} m³.`,
-                    debug: { method: 'End-Area Robust v2', finalKM, count: consolidated.length } 
+                    cutVolume: totalC, 
+                    fillVolume: totalF, 
+                    totalVolume: round3(totalC - totalF), 
+                    log: `DOĞRULANDI: ${lastLog}. Toplam Sonuç: ${totalC.toFixed(3)} m³.`,
+                    debug: { method: 'Netcad Absolute Loop', finalKM, count: consolidated.length } 
                 } 
             };
             
