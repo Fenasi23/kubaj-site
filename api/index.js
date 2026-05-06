@@ -535,11 +535,10 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             if (ext === '.xlsx' || ext === '.xls') {
                 const workbook = xlsx.readFile(fileObj.path);
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                // RAW modda oku ki hiçbir satır atlanmasın
-                const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }); 
+                // header: 1 ile tüm satırları ham dizi olarak alıyoruz
+                const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null }); 
                 logInfo.totalLines = rows.length;
 
-                // İlk satırı başlık sayıp kolonları bulalım
                 const headerRow = rows[0] || [];
                 const colIdx = {};
                 headerRow.forEach((h, i) => {
@@ -547,8 +546,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 });
 
                 rows.forEach((row, index) => {
-                    if (index === 0) return; // Başlığı atla
-                    if (!row || row.length === 0) return;
+                    if (index === 0 || !row || row.length === 0) return;
 
                     const getVal = (names) => {
                         for (let name of names) {
@@ -557,10 +555,14 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                         return null;
                     };
 
-                    const kmId = getVal(['km', 'kesit', 'nokta no', 'id']) || index;
+                    const kmId = getVal(['km', 'kilometre', 'kesit', 'nokta no', 'id']) || index;
                     const kmValue = parseKMValue(kmId);
-                    let yarmaAlani = parseFormattedValue(getVal(['yarma alanı', 'yarma alan', 'yarma', 'cut area']));
-                    let dolguAlani = parseFormattedValue(getVal(['dolgu alanı', 'dolgu alan', 'dolgu', 'fill area']));
+                    
+                    // Eğer KM okunamadıysa bu satırı atla (gürültü olabilir)
+                    if (isNaN(kmValue)) return;
+
+                    let yarmaAlani = parseFormattedValue(getVal(['yarma alanı', 'yarma alan', 'yarma', 'cut area', 'alan_yarma']));
+                    let dolguAlani = parseFormattedValue(getVal(['dolgu alanı', 'dolgu alan', 'dolgu', 'fill area', 'alan_dolgu']));
                     
                     if (yarmaAlani > 100000) yarmaAlani = yarmaAlani / 1000000;
                     if (dolguAlani > 100000) dolguAlani = dolguAlani / 1000000;
@@ -569,8 +571,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     logInfo.kmLinesRead++;
                 });
             } else if (ext === '.ncn' || ext === '.mcz') {
-                const content = fs.readFileSync(fileObj.path, 'utf-8');
-                const lines = content.split(/\r?\n/); // Windows/Unix uyumlu bölme
+                const content = fs.readFileSync(fileObj.path, 'utf-8').trim();
+                const lines = content.split(/\r?\n/);
                 logInfo.totalLines = lines.length;
 
                 lines.forEach((line) => {
@@ -579,12 +581,13 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     
                     let kmId = '', cutA = 0, fillA = 0;
                     const kmMatch = cleanLine.match(/KM\s+([^\s]+)/i);
-                    const nums = cleanLine.match(/[\d.,+\-]+/g) || [];
+                    // Sayısal değerleri ayıkla (0+200.00 gibi formatları koruyarak)
+                    const nums = cleanLine.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
 
                     if (kmMatch) {
                         kmId = kmMatch[1];
                         const remaining = cleanLine.substring(kmMatch.index + kmMatch[0].length);
-                        const rNums = remaining.match(/[\d.,+\-]+/g) || [];
+                        const rNums = remaining.match(/[0-9]+(\.[0-9]+)?(,[0-9]+)?/g) || [];
                         if (rNums.length >= 3) {
                             cutA = parseFormattedValue(rNums[1]);
                             fillA = parseFormattedValue(rNums[2]);
@@ -615,37 +618,44 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 });
             }
 
-            if (pts.length === 0) return res.status(400).send('Dosyadan geçerli kesit verisi okunamadı.');
+            if (pts.length < 2) return res.status(400).send('Hesaplama için en az 2 kesit gereklidir. Okunan kesit sayısı: ' + pts.length);
 
-            // KM değerine göre sırala ve kopyasını al (stable sort)
+            // KM değerine göre sırala
             pts.sort((a, b) => a.kmValue - b.kmValue);
 
             const maxKM = pts[pts.length - 1].kmValue;
-            console.log(`[KUBAJ DEBUG] Okunan Maksimum Kilometre: ${maxKM} (Kesit Sayısı: ${pts.length})`);
+            console.log(`[KUBAJ] OKUMA TAMAMLANDI. TOPLAM KESİT: ${pts.length}, SON KM: ${maxKM}`);
 
             let cumulativeCut = 0, cumulativeFill = 0, totalDistance = 0;
             const round3 = (val) => Math.round(val * 1000) / 1000;
 
-            for (let i = 0; i < pts.length; i++) {
-                let segmentCut = 0, segmentFill = 0, L = 0;
+            // Hacim Hesaplama Döngüsü (Her aralığı -interval- hesaplar)
+            for (let i = 1; i < pts.length; i++) {
+                const prev = pts[i-1];
+                const curr = pts[i];
                 
-                if (i > 0) {
-                    const prev = pts[i-1], curr = pts[i];
-                    L = round3(curr.kmValue - prev.kmValue);
-                    if (L < 0) L = 0;
-                    pts[i].araUzaklik = L;
-                    totalDistance += L;
-                    segmentCut = round3(((prev.yarmaAlani + curr.yarmaAlani) / 2.0) * L);
-                    segmentFill = round3(((prev.dolguAlani + curr.dolguAlani) / 2.0) * L);
-                }
+                const L = round3(curr.kmValue - prev.kmValue);
+                if (L < 0) continue; 
+                
+                pts[i].araUzaklik = L;
+                totalDistance += L;
+                
+                const segmentCut = round3(((prev.yarmaAlani + curr.yarmaAlani) / 2.0) * L);
+                const segmentFill = round3(((prev.dolguAlani + curr.dolguAlani) / 2.0) * L);
 
                 pts[i].yarmaHacmi = segmentCut;
                 pts[i].dolguHacmi = segmentFill;
+                
                 cumulativeCut = round3(cumulativeCut + segmentCut);
                 cumulativeFill = round3(cumulativeFill + segmentFill);
+                
                 pts[i].cumulativeCut = cumulativeCut;
                 pts[i].cumulativeFill = cumulativeFill;
                 pts[i].brunner = round3(cumulativeCut - cumulativeFill);
+                
+                if (i === pts.length - 1) {
+                    console.log(`[KUBAJ] SON ARALIK HESAPLANDI: KM ${prev.kmValue} -> ${curr.kmValue}, Mesafe: ${L}, Hacim: ${segmentCut}`);
+                }
             }
 
             logInfo.totalDistance = totalDistance;
@@ -656,8 +666,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     cutVolume: cumulativeCut, 
                     fillVolume: cumulativeFill, 
                     totalVolume: round3(cumulativeCut - cumulativeFill), 
-                    log: `Maksimum KM: ${maxKM}, Kesit Sayısı: ${logInfo.kmLinesRead}, Toplam Mesafe: ${totalDistance.toFixed(3)} m.`,
-                    debug: { method: 'End-Area (Raw Loop)', logInfo, maxKMFound: maxKM } 
+                    log: `Doğrulama: Son Kesit ${maxKM}, Toplam ${pts.length} Nokta, ${totalDistance.toFixed(3)}m Güzergah.`,
+                    debug: { method: 'End-Area (Final Coverage)', logInfo, maxKMFound: maxKM } 
                 } 
             };
             
