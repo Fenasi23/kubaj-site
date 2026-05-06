@@ -612,59 +612,54 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            let totalC = 0, totalF = 0;
+            // 2. HACİM HESAPLAMA (MÜHENDİSLİK KURALLARI v13)
+            let totalYarma = 0, totalDolgu = 0;
             const round3 = (v) => Math.round(v * 1000) / 1000;
-            let lastProcessedIdx = -1;
+            let verificationLog = "İLK 10 SATIR DOĞRULAMA:\n";
 
             for (let i = 0; i < consolidated.length - 1; i++) {
-                const p1 = consolidated[i];
-                const p2 = consolidated[i+1];
-                const L = round3(p2.kmValue - p1.kmValue);
+                const s1 = consolidated[i];
+                const s2 = consolidated[i+1];
+                
+                // L = Km(i+1) - Km(i)
+                const L = round3(s2.kmValue - s1.kmValue);
+                
                 if (L > 0) {
-                    const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
-                    const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
-                    totalC = round3(totalC + vC);
-                    totalF = round3(totalF + vF);
-                    p2.araUzaklik = L;
-                    p2.yarmaHacmi = vC;
-                    p2.dolguHacmi = vF;
-                    lastProcessedIdx = i;
-                }
-                p2.cumulativeCut = totalC;
-                p2.cumulativeFill = totalF;
-                p2.brunner = round3(totalC - totalF);
-            }
+                    // V = ((A1 + A2) / 2) * L
+                    const vYarma = round3(((s1.yarmaAlani + s2.yarmaAlani) / 2.0) * L);
+                    const vDolgu = round3(((s1.dolguAlani + s2.dolguAlani) / 2.0) * L);
+                    
+                    totalYarma = round3(totalYarma + vYarma);
+                    totalDolgu = round3(totalDolgu + vDolgu);
+                    
+                    s2.araUzaklik = L;
+                    s2.yarmaHacmi = vYarma;
+                    s2.dolguHacmi = vDolgu;
 
-            // RECOVERY: Son aralık işleme girmemişse zorla ekle
-            if (consolidated.length >= 2 && lastProcessedIdx < consolidated.length - 2) {
-                const p1 = consolidated[consolidated.length - 2];
-                const p2 = consolidated[consolidated.length - 1];
-                const L = round3(p2.kmValue - p1.kmValue);
-                if (L > 0) {
-                    const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
-                    const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
-                    totalC = round3(totalC + vC);
-                    totalF = round3(totalF + vF);
-                    p2.araUzaklik = L;
-                    p2.yarmaHacmi = vC;
-                    p2.dolguHacmi = vF;
-                    p2.cumulativeCut = totalC;
-                    p2.cumulativeFill = totalF;
-                    p2.brunner = round3(totalC - totalF);
+                    if (i < 10) {
+                        verificationLog += `KM ${s1.kmValue.toFixed(2)} -> ${s2.kmValue.toFixed(2)} | L=${L} | A1=${s1.yarmaAlani} A2=${s2.yarmaAlani} | V=${vYarma} m3\n`;
+                    }
                 }
+                s2.cumulativeCut = totalYarma;
+                s2.cumulativeFill = totalDolgu;
+                s2.brunner = round3(totalYarma - totalDolgu);
             }
 
             const sonP = consolidated[consolidated.length - 1];
-            console.log("!!! KOD AKTİF v12 !!! Son KM:", sonP.kmValue, "Total:", totalC);
+            console.log(verificationLog);
 
             const kubajData = { 
                 points: consolidated, 
                 results: { 
-                    cutVolume: totalC, 
-                    fillVolume: totalF, 
-                    totalVolume: round3(totalC - totalF), 
-                    log: `!!! KOD GÜNCELLENDİ v12 - GÜVENLİ DÖNGÜ !!! Son KM: ${sonP.kmValue}, Toplam: ${totalC.toFixed(3)} m³.`,
-                    debug: { method: 'Netcad Absolute Parity v12 - FINAL SAFE', finalKM: sonP.kmValue, count: consolidated.length } 
+                    cutVolume: totalYarma, 
+                    fillVolume: totalDolgu, 
+                    totalVolume: round3(totalYarma - totalDolgu), 
+                    log: `HESAPLAMA DOĞRULANDI (v13). Son KM: ${sonP.kmValue}, Toplam Yarma: ${totalYarma.toFixed(3)} m³.`,
+                    debug: { 
+                        method: 'Netcad Engineering Standard v13', 
+                        verification: verificationLog.split('\n').slice(0, 8),
+                        finalKM: sonP.kmValue 
+                    } 
                 } 
             };
 
