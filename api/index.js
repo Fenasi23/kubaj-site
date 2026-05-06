@@ -520,10 +520,12 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const parseKMValue = (kmStr) => {
                 if (typeof kmStr === 'number') return kmStr;
                 if (!kmStr) return 0;
-                const s = kmStr.toString().trim();
+                const s = kmStr.toString().trim().replace(/ /g, '');
                 if (s.includes('+')) {
-                    const [k, m] = s.split('+');
-                    return (parseFloat(k) || 0) * 1000 + (parseFloat(m.replace(',', '.')) || 0);
+                    const parts = s.split('+');
+                    const k = parseFloat(parts[0]) || 0;
+                    const m = parseFloat(parts[1].replace(',', '.')) || 0;
+                    return (k * 1000) + m;
                 }
                 return parseFloat(s.replace(',', '.')) || 0;
             };
@@ -536,34 +538,33 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 const headerRow = rows[0] || [];
                 const colIdx = {};
                 headerRow.forEach((h, i) => {
-                    if (h) colIdx[h.toString().toLowerCase().trim().replace(/ /g, '_')] = i;
+                    if (h) colIdx[h.toString().toLowerCase().trim().replace(/[ ()]/g, '_')] = i;
                 });
 
                 for (let r = 1; r < rows.length; r++) {
                     const row = rows[r];
                     if (!row || row.length === 0) continue;
-
+                    
                     const getVal = (names) => {
                         for (let name of names) {
-                            const n = name.toLowerCase().replace(/ /g, '_').trim();
+                            const n = name.toLowerCase().replace(/[ ()]/g, '_').trim();
                             if (colIdx[n] !== undefined) return row[colIdx[n]];
-                            if (colIdx[n + '_m2'] !== undefined) return row[colIdx[n + '_m2']];
-                            if (colIdx[n + '_(m2)'] !== undefined) return row[colIdx[n + '_(m2)']];
+                            const variations = [n, n + '_m2', n + '_m_', 'alan_' + n, 'toplam_' + n];
+                            for (let v of variations) {
+                                if (colIdx[v] !== undefined) return row[colIdx[v]];
+                            }
                         }
                         return null;
                     };
 
-                    const kmRaw = getVal(['km', 'kilometre', 'kesit', 'nokta no', 'id', 'km_no']) || row[0];
+                    const kmRaw = getVal(['km', 'kilometre', 'kesit', 'nokta', 'id', 'station', 'km_no']) || row[0];
                     const kmValue = parseKMValue(kmRaw);
                     if (isNaN(kmValue)) continue;
 
-                    let yA = parseFormattedValue(getVal(['yarma alanı', 'yarma alan', 'yarma', 'alan_yarma', 'kazı', 'kazi', 'cut area', 'alan_kazi', 'yarma_m2', 'kazı_m2']));
-                    let dA = parseFormattedValue(getVal(['dolgu alanı', 'dolgu alan', 'dolgu', 'alan_dolgu', 'fill area', 'dolgu_m2']));
-                    
-                    if (yA > 100000) yA = yA / 1000000;
-                    if (dA > 100000) dA = dA / 1000000;
+                    const yarma = parseFormattedValue(getVal(['yarma', 'yarma_alanı', 'kazı', 'kazi', 'cut', 'cut_area', 'alan_yarma', 'alan_kazi']));
+                    const dolgu = parseFormattedValue(getVal(['dolgu', 'dolgu_alanı', 'fill', 'fill_area', 'alan_dolgu', 'dolgu_alani', 'toplam_dolgu', 'dolgu_m2']));
 
-                    pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
+                    pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yarma, dolguAlani: dolgu });
                 }
             } else {
                 const content = fs.readFileSync(fileObj.path, 'utf-8');
@@ -572,33 +573,25 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 while ((match = regex.exec(content)) !== null) {
                     const kmRaw = match[1];
                     const dataPart = match[2];
-                    const kmValue = Math.round(parseKMValue(kmRaw) * 1000) / 1000;
+                    const kmValue = parseKMValue(kmRaw);
                     const nums = dataPart.match(/[0-9]+([.,][0-9]+)?/g) || [];
-                    let cutA = 0, fillA = 0;
+                    let yA = 0, dA = 0;
                     if (nums.length >= 3) {
-                        cutA = parseFormattedValue(nums[1]);
-                        fillA = parseFormattedValue(nums[2]);
+                        yA = parseFormattedValue(nums[1]);
+                        dA = parseFormattedValue(nums[2]);
                     } else if (nums.length === 2) {
-                        cutA = parseFormattedValue(nums[0]);
-                        fillA = parseFormattedValue(nums[1]);
+                        yA = parseFormattedValue(nums[0]);
+                        dA = parseFormattedValue(nums[1]);
                     } else if (nums.length === 1) {
-                        cutA = parseFormattedValue(nums[0]);
+                        yA = parseFormattedValue(nums[0]);
                     }
                     if (!isNaN(kmValue)) {
-                        pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: cutA, dolguAlani: fillA });
-                    }
-                }
-                
-                if (content.includes('200.00') && !pts.some(p => Math.abs(p.kmValue - 200) < 0.1)) {
-                    const lastLines = content.split('\n').slice(-10).join('\n');
-                    const lastNums = lastLines.match(/[0-9]+([.,][0-9]+)?/g) || [];
-                    if (lastNums.length >= 3) {
-                        pts.push({ id: "200.00", kmValue: 200, yarmaAlani: parseFormattedValue(lastNums[lastNums.length-2]), dolguAlani: parseFormattedValue(lastNums[lastNums.length-1]) });
+                        pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
                     }
                 }
             }
 
-            if (pts.length < 2) return res.status(400).send('Hata: Dosyadan yeterli veri okunamadı.');
+            if (pts.length < 2) return res.status(400).send('Hata: Yeterli veri okunamadı.');
 
             pts.sort((a, b) => a.kmValue - b.kmValue);
             const consolidated = [];
@@ -612,53 +605,50 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // 2. HACİM HESAPLAMA (MÜHENDİSLİK KURALLARI v13)
-            let totalYarma = 0, totalDolgu = 0;
+            let tYarma = 0, tDolgu = 0;
             const round3 = (v) => Math.round(v * 1000) / 1000;
-            let verificationLog = "İLK 10 SATIR DOĞRULAMA:\n";
+            let debugLog = "DEBUG (İLK 5 SEGMENT):\n";
 
             for (let i = 0; i < consolidated.length - 1; i++) {
                 const s1 = consolidated[i];
                 const s2 = consolidated[i+1];
                 
-                // L = Km(i+1) - Km(i)
                 const L = round3(s2.kmValue - s1.kmValue);
                 
                 if (L > 0) {
-                    // V = ((A1 + A2) / 2) * L
-                    const vYarma = round3(((s1.yarmaAlani + s2.yarmaAlani) / 2.0) * L);
-                    const vDolgu = round3(((s1.dolguAlani + s2.dolguAlani) / 2.0) * L);
+                    const vY = round3(((s1.yarmaAlani + s2.yarmaAlani) / 2.0) * L);
+                    const vD = round3(((s1.dolguAlani + s2.dolguAlani) / 2.0) * L);
                     
-                    totalYarma = round3(totalYarma + vYarma);
-                    totalDolgu = round3(totalDolgu + vDolgu);
+                    tYarma = round3(tYarma + vY);
+                    tDolgu = round3(tDolgu + vD);
                     
                     s2.araUzaklik = L;
-                    s2.yarmaHacmi = vYarma;
-                    s2.dolguHacmi = vDolgu;
+                    s2.yarmaHacmi = vY;
+                    s2.dolguHacmi = vD;
 
-                    if (i < 10) {
-                        verificationLog += `KM ${s1.kmValue.toFixed(2)} -> ${s2.kmValue.toFixed(2)} | L=${L} | A1=${s1.yarmaAlani} A2=${s2.yarmaAlani} | V=${vYarma} m3\n`;
+                    if (i < 5) {
+                        debugLog += `SEGMENT ${i+1}: KM ${s1.kmValue}->${s2.kmValue} | L=${L} | A1=${s1.yarmaAlani} A2=${s2.yarmaAlani} | V_Yarma=${vY} m3\n`;
                     }
                 }
-                s2.cumulativeCut = totalYarma;
-                s2.cumulativeFill = totalDolgu;
-                s2.brunner = round3(totalYarma - totalDolgu);
+                s2.cumulativeCut = tYarma;
+                s2.cumulativeFill = tDolgu;
+                s2.brunner = round3(tYarma - tDolgu);
             }
 
-            const sonP = consolidated[consolidated.length - 1];
-            console.log(verificationLog);
+            console.log(debugLog);
+            const son = consolidated[consolidated.length - 1];
 
             const kubajData = { 
                 points: consolidated, 
                 results: { 
-                    cutVolume: totalYarma, 
-                    fillVolume: totalDolgu, 
-                    totalVolume: round3(totalYarma - totalDolgu), 
-                    log: `HESAPLAMA DOĞRULANDI (v13). Son KM: ${sonP.kmValue}, Toplam Yarma: ${totalYarma.toFixed(3)} m³.`,
+                    cutVolume: tYarma, 
+                    fillVolume: tDolgu, 
+                    totalVolume: round3(tYarma - tDolgu), 
+                    log: `HESAPLAMA TAMAMLANDI (v14). Son KM: ${son.kmValue}, Toplam: ${tYarma.toFixed(3)} m³.`,
                     debug: { 
-                        method: 'Netcad Engineering Standard v13', 
-                        verification: verificationLog.split('\n').slice(0, 8),
-                        finalKM: sonP.kmValue 
+                        method: 'Netcad Engineering Standard v14', 
+                        info: debugLog.split('\n').slice(0, 6),
+                        magnitudeWarning: tYarma < 1000 ? "UYARI: Sonuç beklenenden küçük çıktı, birimleri kontrol edin." : "Tamam"
                     } 
                 } 
             };
