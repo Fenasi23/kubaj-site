@@ -652,10 +652,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 consolidated[i+1].brunner = round3(totalC - totalF);
             }
 
-            const finalKM = consolidated[consolidated.length - 1].kmValue;
-            console.log(`[NETCAD-MATCH] SON KM: ${finalKM}, TOPLAM YARMA: ${totalC}, ${lastLog}`);
-
-            const lastLog = consolidated.length > 1 ? `Son Segment [${consolidated[consolidated.length-2].kmValue}-${consolidated[consolidated.length-1].kmValue}]` : "";
+            lastLog = consolidated.length > 1 ? `Son Segment [${consolidated[consolidated.length-2].kmValue}-${consolidated[consolidated.length-1].kmValue}]` : "";
 
             const kubajData = { 
                 points: consolidated, 
