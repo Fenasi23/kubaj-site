@@ -519,7 +519,18 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const ext = path.extname(fileObj.originalname).toLowerCase();
             
             let pts = [];
-            let logInfo = { totalLines: 0, kmLinesRead: 0, errors: [] };
+            let logInfo = { totalLines: 0, kmLinesRead: 0, totalDistance: 0, errors: [] };
+
+            const parseKMValue = (kmStr) => {
+                if (typeof kmStr === 'number') return kmStr;
+                if (!kmStr) return 0;
+                const s = kmStr.toString().trim();
+                if (s.includes('+')) {
+                    const [k, m] = s.split('+');
+                    return (parseFloat(k) || 0) * 1000 + (parseFloat(m.replace(',', '.')) || 0);
+                }
+                return parseFloat(s.replace(',', '.')) || 0;
+            };
 
             if (ext === '.xlsx' || ext === '.xls') {
                 const workbook = xlsx.readFile(fileObj.path);
@@ -531,17 +542,16 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     const lowerRow = {};
                     Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k]);
                     
-                    const kesitNo = lowerRow['kesit'] || lowerRow['km'] || lowerRow['nokta no'] || lowerRow['id'] || `K${index+1}`;
+                    const kmId = lowerRow['km'] || lowerRow['kesit'] || lowerRow['nokta no'] || lowerRow['id'] || index;
+                    const kmValue = parseKMValue(kmId);
                     let yarmaAlani = parseFormattedValue(lowerRow['yarma alanı'] || lowerRow['yarma alan'] || lowerRow['yarma'] || lowerRow['cut area']);
                     let dolguAlani = parseFormattedValue(lowerRow['dolgu alanı'] || lowerRow['dolgu alan'] || lowerRow['dolgu'] || lowerRow['fill area']);
-                    let araUzaklik = parseFormattedValue(lowerRow['ara uzaklık'] || lowerRow['mesafe'] || lowerRow['uzaklık'] || lowerRow['l']);
                     
                     // KURAL: Eğer alanlar mm2 cinsinden geldiyse m2'ye çevir.
                     if (yarmaAlani > 100000) yarmaAlani = yarmaAlani / 1000000;
                     if (dolguAlani > 100000) dolguAlani = dolguAlani / 1000000;
-                    if (araUzaklik > 10000) araUzaklik = araUzaklik / 1000;
 
-                    pts.push({ id: kesitNo, yarmaAlani, dolguAlani, araUzaklik, yarmaHacmi: 0, dolguHacmi: 0, cumulativeCut: 0, cumulativeFill: 0, brunner: 0 });
+                    pts.push({ id: kmId, kmValue, yarmaAlani, dolguAlani, araUzaklik: 0, yarmaHacmi: 0, dolguHacmi: 0, cumulativeCut: 0, cumulativeFill: 0, brunner: 0 });
                     logInfo.kmLinesRead++;
                 });
             } else if (ext === '.ncn' || ext === '.mcz') {
@@ -553,51 +563,63 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     const cleanLine = line.trim();
                     if (!cleanLine) return;
                     
-                    // Netcad NCN/MCZ formatında "KM" veya sayısal bir başlık ile başlayan satırlar
-                    // Örnek: KM 0.000 5.20 1.10 5.00 (KM, AraUzaklik, YarmaAlani, DolguAlani)
-                    // Veya sadece sayısal sütunlar: 0.000 5.00 12.50 0.00
                     const parts = cleanLine.split(/\s+/);
-                    if (parts.length >= 4) {
-                        let km, dist, cutA, fillA;
+                    if (parts.length >= 3) { // En az KM ve Alanlar olmalı
+                        let kmId, cutA, fillA;
                         if (parts[0].toUpperCase() === 'KM') {
-                            km = parts[1];
-                            dist = parseFormattedValue(parts[2]);
-                            cutA = parseFormattedValue(parts[3]);
-                            fillA = parseFormattedValue(parts[4] || 0);
+                            kmId = parts[1];
+                            // Eğer 5 parça varsa: KM, Değer, Mesafe, Yarma, Dolgu (Netcad standardı olabilir)
+                            // Ama biz mesafeyi KM farkından hesaplayacağız.
+                            if (parts.length >= 5) {
+                                cutA = parseFormattedValue(parts[3]);
+                                fillA = parseFormattedValue(parts[4]);
+                            } else {
+                                cutA = parseFormattedValue(parts[2]);
+                                fillA = parseFormattedValue(parts[3] || 0);
+                            }
                         } else {
-                            km = parts[0];
-                            dist = parseFormattedValue(parts[1]);
-                            cutA = parseFormattedValue(parts[2]);
-                            fillA = parseFormattedValue(parts[3]);
+                            kmId = parts[0];
+                            cutA = parseFormattedValue(parts[1]);
+                            fillA = parseFormattedValue(parts[2] || 0);
                         }
                         
+                        const kmValue = parseKMValue(kmId);
                         pts.push({ 
-                            id: km, 
+                            id: kmId, 
+                            kmValue,
                             yarmaAlani: cutA, 
                             dolguAlani: fillA, 
-                            araUzaklik: dist,
+                            araUzaklik: 0,
                             yarmaHacmi: 0, dolguHacmi: 0, cumulativeCut: 0, cumulativeFill: 0, brunner: 0 
                         });
                         logInfo.kmLinesRead++;
                     }
                 });
-            } else {
-                return res.status(400).send('Enkesit yöntemi için lütfen Excel (.xlsx, .xls) veya Netcad (.ncn, .mcz) dosyası yükleyin.');
             }
 
             if (pts.length === 0) return res.status(400).send('Dosyadan geçerli kesit verisi okunamadı. KM satırlarını kontrol edin.');
 
+            // KM değerine göre sırala (Mesafe hesabı için doğru sıra şart)
+            pts.sort((a, b) => a.kmValue - b.kmValue);
+
             let cumulativeCut = 0, cumulativeFill = 0;
+            let totalDistance = 0;
             const round3 = (val) => Math.round(val * 1000) / 1000;
 
             for (let i = 0; i < pts.length; i++) {
                 let segmentCut = 0, segmentFill = 0;
+                let L = 0;
                 
-                // Hacim = [(Alan1 + Alan2) / 2] * Mesafe (Ortalama Alanlar Yöntemi)
                 if (i > 0) {
                     const prev = pts[i-1];
                     const curr = pts[i];
-                    const L = curr.araUzaklik || 0; 
+                    
+                    // KURAL: Mesafe = Km2 - Km1
+                    L = round3(curr.kmValue - prev.kmValue);
+                    if (L < 0) L = 0; // Ters yön engelleme
+                    
+                    pts[i].araUzaklik = L;
+                    totalDistance += L;
                     
                     // Netcad Standart: Her segment için hacim hesapla ve 3 basamağa yuvarla
                     segmentCut = round3(((prev.yarmaAlani + curr.yarmaAlani) / 2.0) * L);
@@ -615,14 +637,16 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 pts[i].brunner = round3(cumulativeCut - cumulativeFill);
             }
 
+            logInfo.totalDistance = totalDistance;
+
             const kubajData = { 
                 points: pts, 
                 results: { 
                     cutVolume: cumulativeCut, 
                     fillVolume: cumulativeFill, 
                     totalVolume: round3(cumulativeFill - cumulativeCut), 
-                    log: `Dosya Okuma: ${logInfo.kmLinesRead}/${logInfo.totalLines} satır işlendi.`,
-                    debug: { method: 'End-Area (Netcad Standartları)', logInfo } 
+                    log: `Okunan Kesit: ${logInfo.kmLinesRead}, Toplam Mesafe: ${totalDistance.toFixed(2)}m`,
+                    debug: { method: 'End-Area (KM Bazlı)', logInfo } 
                 } 
             };
             
