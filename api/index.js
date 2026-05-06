@@ -567,41 +567,59 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     if (dA > 100000) dA = dA / 1000000;
 
                     pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
-                    logInfo.kmLinesRead++;
                 }
             } else if (ext === '.ncn' || ext === '.mcz') {
                 const content = fs.readFileSync(fileObj.path, 'utf-8').trim();
-                // Blok bazlı ayır (KM kelimesini sınır kabul et)
+                // KM bazlı bloklara ayır
                 const blocks = content.split(/KM\s*[:=]?\s*/i);
-                blocks.forEach(block => {
-                    const nums = block.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
-                    if (nums.length >= 2) {
+                
+                blocks.forEach((block) => {
+                    const trimmed = block.trim();
+                    if (!trimmed) return;
+                    
+                    // Sayısal değerleri topla
+                    const nums = trimmed.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
+                    if (nums.length >= 1) {
                         const kmRaw = nums[0];
                         const kmValue = parseKMValue(kmRaw);
-                        let yA = 0, dA = 0;
+                        let cutA = 0, fillA = 0;
+                        
+                        // Netcad MCZ/NCN varyasyonlarına göre alanları bul
                         if (nums.length >= 4) {
-                            yA = parseFormattedValue(nums[2]);
-                            dA = parseFormattedValue(nums[3]);
+                            // KM, L, Yarma, Dolgu
+                            cutA = parseFormattedValue(nums[2]);
+                            fillA = parseFormattedValue(nums[3]);
                         } else if (nums.length === 3) {
-                            yA = parseFormattedValue(nums[1]);
-                            dA = parseFormattedValue(nums[2]);
-                        } else {
-                            yA = parseFormattedValue(nums[1]);
+                            // KM, Yarma, Dolgu
+                            cutA = parseFormattedValue(nums[1]);
+                            fillA = parseFormattedValue(nums[2]);
+                        } else if (nums.length === 2) {
+                            // KM, Yarma
+                            cutA = parseFormattedValue(nums[1]);
                         }
+                        
                         if (!isNaN(kmValue)) {
-                            pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: yA, dolguAlani: dA });
-                            logInfo.kmLinesRead++;
+                            pts.push({ id: kmRaw.toString(), kmValue, yarmaAlani: cutA, dolguAlani: fillA });
                         }
                     }
                 });
+
+                // Alternatif: Satır bazlı yedek okuma (Eğer blok okuma başarısızsa)
+                if (pts.length < 2) {
+                    content.split(/\n/).forEach(line => {
+                        const nums = line.match(/[0-9]+(\+[0-9]+)?(\.[0-9]+)?(,[0-9]+)?/g) || [];
+                        if (nums.length >= 2) {
+                            const kmValue = parseKMValue(nums[0]);
+                            if (!isNaN(kmValue)) pts.push({ id: nums[0], kmValue, yarmaAlani: parseFormattedValue(nums[1]), dolguAlani: parseFormattedValue(nums[2] || 0) });
+                        }
+                    });
+                }
             }
 
-            if (pts.length < 2) return res.status(400).send('Hata: Yeterli kesit verisi okunamadı.');
+            if (pts.length < 2) return res.status(400).send('Hata: Dosyadan kesit verisi okunamadı.');
 
-            // 1. Sırala
+            // 1. Sırala ve Benzersiz Yap
             pts.sort((a, b) => a.kmValue - b.kmValue);
-
-            // 2. Konsolide Et
             const consolidated = [];
             pts.forEach(p => {
                 const last = consolidated[consolidated.length - 1];
@@ -613,8 +631,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 }
             });
 
-            // 3. Hacim Hesaplama
-            let cumulativeCut = 0, cumulativeFill = 0, totalDistance = 0;
+            // 2. Hacim Hesaplama (Kesin Döngü)
+            let cumulativeCut = 0, cumulativeFill = 0;
             const round3 = (val) => Math.round(val * 1000) / 1000;
 
             for (let i = 1; i < consolidated.length; i++) {
@@ -623,7 +641,6 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 const L = round3(p2.kmValue - p1.kmValue);
                 
                 if (L > 0) {
-                    totalDistance += L;
                     const vC = round3(((p1.yarmaAlani + p2.yarmaAlani) / 2.0) * L);
                     const vF = round3(((p1.dolguAlani + p2.dolguAlani) / 2.0) * L);
                     
@@ -639,14 +656,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 consolidated[i].brunner = round3(cumulativeCut - cumulativeFill);
             }
 
-            // 4. SON SEGMENT KRİTİK DOĞRULAMA (Netcad ile Eşitleme)
-            const lastIdx = consolidated.length - 1;
-            const finalPoint = consolidated[lastIdx];
-            
-            // Eğer son kesit KM 200 ise ve hacim hala eksikse, son aralığı bir kez daha zorla
-            if (finalPoint.kmValue >= 200 && cumulativeCut < 23100) {
-                 console.log('[KUBAJ-RECOVERY] Eksik hacim saptandı, son segment tekrar işleniyor...');
-            }
+            const finalKM = consolidated[consolidated.length - 1].kmValue;
+            console.log(`[KUBAJ-SUCCESS] SON KM: ${finalKM}, TOPLAM: ${cumulativeCut}`);
 
             const kubajData = { 
                 points: consolidated, 
@@ -654,8 +665,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     cutVolume: cumulativeCut, 
                     fillVolume: cumulativeFill, 
                     totalVolume: round3(cumulativeCut - cumulativeFill), 
-                    log: `HESAPLAMA: Son KM ${finalPoint.kmValue}, Toplam Yarma: ${cumulativeCut.toFixed(3)} m³.`,
-                    debug: { method: 'End-Area Final Recovery', finalKM: finalPoint.kmValue, totalDistance } 
+                    log: `HESAPLAMA TAMAMLANDI: Son Kesit KM ${finalKM}, Toplam Hacim: ${cumulativeCut.toFixed(3)} m³.`,
+                    debug: { method: 'End-Area Robust v2', finalKM, count: consolidated.length } 
                 } 
             };
             
