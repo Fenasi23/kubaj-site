@@ -655,14 +655,16 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const finalKM = consolidated[consolidated.length - 1].kmValue;
             console.log(`[NETCAD-MATCH] SON KM: ${finalKM}, TOPLAM YARMA: ${totalC}, ${lastLog}`);
 
+            const lastLog = consolidated.length > 1 ? `Son Segment [${consolidated[consolidated.length-2].kmValue}-${consolidated[consolidated.length-1].kmValue}]` : "";
+
             const kubajData = { 
                 points: consolidated, 
                 results: { 
                     cutVolume: totalC, 
                     fillVolume: totalF, 
                     totalVolume: round3(totalC - totalF), 
-                    log: `DOĞRULANDI: ${lastLog}. Toplam Sonuç: ${totalC.toFixed(3)} m³.`,
-                    debug: { method: 'Netcad Absolute Loop', finalKM, count: consolidated.length } 
+                    log: `HESAPLAMA TAMAMLANDI: ${lastLog}. Toplam Hacim: ${totalC.toFixed(3)} m³.`,
+                    debug: { method: 'Netcad Absolute Sync', finalKM: consolidated[consolidated.length-1].kmValue, count: consolidated.length } 
                 } 
             };
             
