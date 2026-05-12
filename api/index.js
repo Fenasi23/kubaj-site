@@ -419,65 +419,80 @@ const mapHeaders = (row) => {
 // --- NCZ (Netcad) BINARY PARSER ---
 const parseNcz = (buffer) => {
     let points = [];
+    let breaklines = [];
     try {
-        // NCZ dosyaları genellikle sıkıştırılmıştır.
         let data = buffer;
         try {
             data = zlib.inflateSync(buffer);
-        } catch (e) {
-            // Sıkıştırılmamış olabilir, devam et
-        }
+        } catch (e) {}
 
-        // Basit ikili tarama: 3'lü double (8-byte) grupları ara
-        // Türkiye koordinat sistemleri (ITRF/ED50) için tipik aralıklar:
-        // Y (East): 200.000 - 800.000
-        // X (North): 3.500.000 - 5.000.000
-        // Bu aralıklara uyan 8-byte double çiftlerini bulmaya çalışıyoruz.
+        // Netcad 8.0 ve üzeri için 64-bit Double taraması
+        let lastX = 0, lastY = 0, currentPath = [];
         
-        // Daha hassas tarama: 1-byte adımlarla ilerle (Tüm versiyonlar için en kesin sonuç)
         for (let i = 0; i < data.length - 24; i++) {
             const y = data.readDoubleLE(i);
             const x = data.readDoubleLE(i + 8);
             const z = data.readDoubleLE(i + 16);
 
-            // Koordinat aralığı kontrolü: NaN/Sonsuz olmayan ve makul büyüklükteki sayıları yakala
             const isValidVal = (v) => !isNaN(v) && isFinite(v) && Math.abs(v) < 10000000;
             
             if (isValidVal(y) && isValidVal(x) && Math.abs(z) < 1000000) {
-                // Türkiye UTM (ITRF/ED50) veya Yerel Koordinat (0-1.000.000) aralıkları
-                const inRange = (y > -1000000 && y < 2000000 && x > -1000000 && x < 8000000);
+                const inRange = (y > -1000000 && y < 10000000 && x > -1000000 && x < 10000000);
                 
                 if (inRange && Math.abs(y) > 0.001 && Math.abs(x) > 0.001) {
-                    points.push({
+                    const p = {
                         id: `N${points.length + 1}`,
                         y: y,
                         x: x,
                         z_mevcut: z,
                         z_proje: 0
-                    });
-                    i += 23; // Nokta bulunduğunda bloğu atla
+                    };
+                    points.push(p);
+
+                    // BREAKLINE TESPİTİ (Heuristic): 
+                    // Eğer noktalar dosyada ardışık geliyorsa ve aralarındaki mesafe makul ise (şev/çizgi),
+                    // bunları bir 'Kırık Hat' olarak değerlendir.
+                    const distToLast = Math.hypot(x - lastX, y - lastY);
+                    if (distToLast > 0.001 && distToLast < 50) {
+                        currentPath.push(p);
+                    } else {
+                        if (currentPath.length > 1) breaklines.push([...currentPath]);
+                        currentPath = [p];
+                    }
+                    
+                    lastX = x; lastY = y;
+                    i += 23; 
                 }
             }
         }
+        if (currentPath.length > 1) breaklines.push(currentPath);
 
-        // Eğer hiç nokta bulunamadıysa, eski versiyonlarda 4-byte (float) kullanımını kontrol et
-        if (points.length === 0) {
-            for (let i = 0; i < data.length - 12; i++) {
-                const y = data.readFloatLE(i);
-                const x = data.readFloatLE(i + 4);
-                const z = data.readFloatLE(i + 8);
-                const isValidVal = (v) => !isNaN(v) && isFinite(v) && Math.abs(v) < 10000000;
-                if (isValidVal(y) && isValidVal(x) && Math.abs(z) < 1000000) {
-                    const inRange = (y > -1000000 && y < 2000000 && x > -1000000 && x < 8000000);
-                    if (inRange && Math.abs(y) > 1 && Math.abs(x) > 1) {
-                        points.push({ id: `NF${points.length + 1}`, y: y, x: x, z_mevcut: z, z_proje: 0 });
-                        i += 11;
+        // KIRIK HAT (BREAKLINE) SİMÜLASYONU:
+        // Delaunator kütüphanesi 'Constrained' (Zorlamalı) Delaunay desteklemez.
+        // Bu yüzden çizgiler boyunca ara noktalar ekleyerek üçgenlerin çizgiyi takip etmesini sağlıyoruz.
+        breaklines.forEach(path => {
+            for (let j = 0; j < path.length - 1; j++) {
+                const p1 = path[j];
+                const p2 = path[j+1];
+                const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                if (dist > 5) {
+                    const steps = Math.min(Math.floor(dist / 2), 20); // Maks 20 ara nokta
+                    for (let s = 1; s < steps; s++) {
+                        const ratio = s / steps;
+                        points.push({
+                            id: `B${points.length}`,
+                            x: p1.x + (p2.x - p1.x) * ratio,
+                            y: p1.y + (p2.y - p1.y) * ratio,
+                            z_mevcut: p1.z_mevcut + (p2.z_mevcut - p1.z_mevcut) * ratio,
+                            z_proje: 0,
+                            isBreaklinePoint: true
+                        });
                     }
                 }
             }
-        }
+        });
 
-        // Benzer noktaları temizle (duplicate removal)
+        // Duplicate Removal
         if (points.length > 0) {
             const uniquePoints = [];
             const seen = new Set();
