@@ -858,6 +858,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         let cut = 0, fill = 0;
         let hasHighDiffWarning = false;
 
+        if (ptsMevcut.length >= 3 && ptsProje.length >= 3) {
             // 1. Koordinat ve Birim Normalizasyonu
             ptsMevcut = normalizeUnits(filterXYOutliersIQR(ptsMevcut));
             ptsProje = normalizeUnits(filterXYOutliersIQR(ptsProje));
