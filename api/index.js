@@ -243,15 +243,29 @@ app.get('/api/firms', async (req, res) => {
 
 app.post('/api/firms', async (req, res) => {
     try {
-        if (!req.body || !req.body.name) return res.status(400).send('Firma adı gereklidir.');
+        console.log("📥 [POST /api/firms] İstek Gövdesi:", req.body);
+        if (!req.body || !req.body.name) {
+            console.warn("⚠️ [POST /api/firms] Hata: Firma adı eksik.");
+            return res.status(400).send('Firma adı gereklidir.');
+        }
+        
+        // Veritabanı bağlantısını kontrol et
+        if (mongoose.connection.readyState !== 1) {
+            console.log("🔄 Veritabanı bağlı değil, bağlanmaya çalışılıyor...");
+            await connectDB();
+        }
+
         const newFirm = new Firm({ name: req.body.name });
+        console.log("💾 Firma kaydediliyor:", newFirm.name);
         await newFirm.save();
+        console.log("✅ Firma başarıyla kaydedildi:", newFirm._id);
         res.json(newFirm);
     } catch (err) { 
-        console.error("Firma Ekleme Hatası:", err);
+        console.error("❌ Firma Ekleme Hatası:", err);
         res.status(500).json({ 
             error: 'Sunucu hatası veya Veritabanı bağlantısı kurulamadı.', 
             message: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
             hint: 'Eğer bu hata devam ediyorsa MongoDB Atlas IP Beyaz Listesini (0.0.0.0/0) kontrol edin.'
         }); 
     }

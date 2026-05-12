@@ -241,8 +241,8 @@ function Login({ username, password, setUsername, setPassword, error, loading, o
 
 function App() {
   // API URL Ayarı: Geliştirme ortamında proxy üzerinden, canlıda ise direkt "/api" ile çalışır.
-  const API_URL = "";
-  console.log("🔄 PORTAL: Uygulama başlatılıyor. API Adresi:", window.location.origin + "/api");
+  const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+  console.log("🔄 PORTAL: Uygulama başlatılıyor. API Adresi:", (API_URL || window.location.origin) + "/api");
 
   const [activeModule, setActiveModule] = useState('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState(false); // To keep my future layout changes happy
