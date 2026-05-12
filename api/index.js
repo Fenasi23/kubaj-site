@@ -858,14 +858,41 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         let cut = 0, fill = 0;
         let hasHighDiffWarning = false;
 
-        if (ptsMevcut.length >= 3 && ptsProje.length >= 3) {
+            // 1. Koordinat ve Birim Normalizasyonu
+            ptsMevcut = normalizeUnits(filterXYOutliersIQR(ptsMevcut));
+            ptsProje = normalizeUnits(filterXYOutliersIQR(ptsProje));
+
+            if (ptsMevcut.length < 3 || ptsProje.length < 3) {
+                return res.status(400).json({ error: 'Filtreleme sonrası yeterli nokta kalmadı. Lütfen veriyi kontrol edin.' });
+            }
+
+            // 2. Mekansal Çakışma (Spatial Overlap) Kontrolü
+            const getBBox = (pts) => ({
+                minX: Math.min(...pts.map(p => p.x)),
+                maxX: Math.max(...pts.map(p => p.x)),
+                minY: Math.min(...pts.map(p => p.y)),
+                maxY: Math.max(...pts.map(p => p.y))
+            });
+
+            const bboxM = getBBox(ptsMevcut);
+            const bboxP = getBBox(ptsProje);
+
+            const hasOverlap = !(bboxM.maxX < bboxP.minX || bboxM.minX > bboxP.maxX || 
+                                 bboxM.maxY < bboxP.minY || bboxM.minY > bboxP.maxY);
+
+            if (!hasOverlap) {
+                return res.status(400).json({ 
+                    error: 'Koordinat Uyumsuzluğu: Dosyalar coğrafi olarak çakışmıyor!',
+                    detail: `Mevcut: (${bboxM.minX.toFixed(0)}, ${bboxM.minY.toFixed(0)}), Proje: (${bboxP.minX.toFixed(0)}, ${bboxP.minY.toFixed(0)}). Dosyaların aynı koordinat sisteminde olduğundan emin olun.`
+                });
+            }
+
+            // 3. Ortak Lokal Ofset (Hassasiyet Kaybını Önle)
+            const offsetX = bboxM.minX;
+            const offsetY = bboxM.minY;
+
             const DelaunatorModule = await import('delaunator');
             const Delaunator = DelaunatorModule.default || DelaunatorModule;
-
-            // 1. Mevcut ve Proje yüzeylerini ayrı ayrı üçgenle
-            // Büyük koordinatlarda hassasiyet için OFSET kullanımı
-            const offsetX = ptsMevcut[0].x;
-            const offsetY = ptsMevcut[0].y;
 
             const delMevcut = Delaunator.from(ptsMevcut.map(p => [p.x - offsetX, p.y - offsetY]));
             const delProje = Delaunator.from(ptsProje.map(p => [p.x - offsetX, p.y - offsetY]));
@@ -951,6 +978,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     const area = 0.5 * Math.abs(p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y));
                     
                     // Her köşedeki fark: (Proje - Mevcut)
+                    // KURAL: Hacim = (Prizma_Üst_Z - Prizma_Alt_Z) * Alan
                     const d0 = p0.zp - p0.zm;
                     const d1z = p1.zp - p1.zm;
                     const d2z = p2.zp - p2.zm;
@@ -959,6 +987,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     const avgDiff = (d0 + d1z + d2z) / 3;
                     const vol = area * avgDiff;
 
+                    // d > 0 ise Dolgu (Proje Mevcuttan yukarıda), d < 0 ise Kazı (Mevcut Projeden yukarıda)
                     if (vol > 0) fill += vol; else cut += Math.abs(vol);
                 }
 
