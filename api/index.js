@@ -18,6 +18,29 @@ const JWT_SECRET = process.env.JWT_SECRET || 'kubaj_gizli_anahtar_2024_degistiri
 
 const app = express();
 
+// --- LOGGING & HEALTH CHECK (En Üstte) ---
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
+
+app.get(['/api/health', '/health'], (req, res) => {
+    res.json({ 
+        status: 'ok', 
+        time: new Date(), 
+        path: req.path,
+        url: req.url,
+        db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' 
+    });
+});
+
+app.get('/api/debug-routes', (req, res) => {
+    const routes = app._router.stack
+        .filter(r => r.route)
+        .map(r => `${Object.keys(r.route.methods).join(',').toUpperCase()} ${r.route.path}`);
+    res.json({ routes });
+});
+
 // --- MONGODB BAĞLANTISI ---
 const mongoUri = "mongodb+srv://yinemisenpalu_db_user:3qOfQg0ElHtBmnUF@cluster.hgggsjw.mongodb.net/kubaj_site?retryWrites=true&w=majority&appName=Cluster";
 
@@ -26,24 +49,25 @@ let cachedDb = null;
 const connectDB = async () => {
     if (cachedDb && mongoose.connection.readyState === 1) return cachedDb;
     
-    console.log('MongoDB Atlas bağlantısı kuruluyor...');
     try {
+        console.log('🔄 MongoDB Atlas bağlantısı kuruluyor...');
         const db = await mongoose.connect(mongoUri, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000, // 5 saniye sonra timeout ver (10 bekletme)
+            serverSelectionTimeoutMS: 5000,
+            connectTimeoutMS: 15000,
+            family: 4 // IPv4 zorla (Vercel bazen IPv6'da sorun yaşıyor)
         });
         cachedDb = db;
-        console.log('MongoDB Atlas bağlantısı başarılı');
+        console.log('✅ MongoDB Atlas bağlantısı başarılı');
         return db;
     } catch (err) {
-        console.error('MongoDB bağlantı hatası detayları:', err.message);
-        throw new Error('Veritabanı bağlantısı kurulamadı. Lütfen MongoDB Atlas IP Whitelist ayarlarını kontrol edin.');
+        console.error('❌ MongoDB bağlantı hatası:', err.message);
+        throw err;
     }
 };
 
-// Middleware to ensure DB connection
+// --- DB MIDDLEWARE (Sadece /api/health dışındaki rotalar için) ---
 app.use(async (req, res, next) => {
+    if (req.path === '/api/health' || req.path === '/health') return next();
     try {
         await connectDB();
         next();
@@ -830,6 +854,26 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         let minZ = Infinity, maxZ = -Infinity;
         let maxPoint = null, minPoint = null;
 
+        // 1. Memory ve Bellek Kontrolü
+        const memoryUsage = process.memoryUsage().heapUsed / 1024 / 1024;
+        if (memoryUsage > 450) { // Vercel limiti 512MB'dır.
+            return res.status(400).json({ 
+                error: 'BELLEK_LİMİTİ', 
+                message: 'Sunucu belleği çok yoğun, işlem durduruldu.',
+                detail: 'Lütfen dosyayı sadeleştirin veya daha küçük bir alan yükleyin.' 
+            });
+        }
+
+        // 2. Nokta Sayısı Kontrolü
+        const POINT_LIMIT = 30000; // Daha güvenli bir sınır
+        if (ptsMevcut.length > POINT_LIMIT || ptsProje.length > POINT_LIMIT) {
+            return res.status(400).json({ 
+                error: 'KAPASİTE_AŞIMI', 
+                message: `Dosyadaki nokta sayısı çok fazla (${Math.max(ptsMevcut.length, ptsProje.length)}).`,
+                detail: `Vercel sunucu limitleri gereği tek seferde en fazla ${POINT_LIMIT} nokta işlenebilir.`
+            });
+        }
+
         ptsMevcut.forEach(p => {
              if (p.z_mevcut < minZ) { minZ = p.z_mevcut; minPoint = p; }
              if (p.z_mevcut > maxZ) { maxZ = p.z_mevcut; maxPoint = p; }
@@ -995,6 +1039,9 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     // 2D Alan
                     const area = 0.5 * Math.abs(p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y));
                     
+                    // KORUMA: Alan 0 ise hacim hesaplama
+                    if (area < 1e-10) continue;
+
                     // Her köşedeki fark: (Proje - Mevcut)
                     // KURAL: Hacim = (Prizma_Üst_Z - Prizma_Alt_Z) * Alan
                     const d0 = p0.zp - p0.zm;
@@ -1065,13 +1112,23 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         
         await Project.findOneAndUpdate({ firmId, jobName }, { kubajData, updatedAt: Date.now() }, { upsert: true });
         
+        clearTimeout(timeout);
+        
         // Temizlik
-        if (fs.existsSync(req.files['file_mevcut'][0].path)) fs.unlinkSync(req.files['file_mevcut'][0].path);
-        if (fs.existsSync(req.files['file_proje'][0].path)) fs.unlinkSync(req.files['file_proje'][0].path);
+        if (req.files['file_mevcut']) {
+            const f = req.files['file_mevcut'][0];
+            if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
+        }
+        if (req.files['file_proje']) {
+            const f = req.files['file_proje'][0];
+            if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
+        }
         
         res.json(kubajData);
     } catch (err) { 
-        res.status(500).send('Hesaplama hatası: ' + err.message); 
+        clearTimeout(timeout);
+        console.error("❌ HESAPLAMA HATASI:", err);
+        res.status(500).json({ error: 'Hesaplama Hatası', message: err.message }); 
     }
 });
 
