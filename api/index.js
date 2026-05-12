@@ -878,19 +878,35 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const bboxM = getBBox(ptsMevcut);
             const bboxP = getBBox(ptsProje);
 
-            const hasOverlap = !(bboxM.maxX < bboxP.minX || bboxM.minX > bboxP.maxX || 
-                                 bboxM.maxY < bboxP.minY || bboxM.minY > bboxP.maxY);
+            const dist = Math.hypot(bboxM.minX - bboxP.minX, bboxM.minY - bboxP.minY);
+            const autoAlign = req.body.autoAlign === 'true' || req.body.autoAlign === true;
 
-            if (!hasOverlap) {
+            if (dist > 100 && !autoAlign) {
                 return res.status(400).json({ 
-                    error: 'Koordinat Uyumsuzluğu: Dosyalar coğrafi olarak çakışmıyor!',
-                    detail: `Mevcut: (${bboxM.minX.toFixed(0)}, ${bboxM.minY.toFixed(0)}), Proje: (${bboxP.minX.toFixed(0)}, ${bboxP.minY.toFixed(0)}). Dosyaların aynı koordinat sisteminde olduğundan emin olun.`
+                    error: 'ALIGNMENT_REQUIRED',
+                    message: `Dosyalar arası mesafe ${dist.toFixed(0)} metre. Koordinat evrenleri farklı olabilir.`,
+                    detail: `Mevcut: (${bboxM.minX.toFixed(0)}, ${bboxM.minY.toFixed(0)}), Proje: (${bboxP.minX.toFixed(0)}, ${bboxP.minY.toFixed(0)}). Otomatik hizalama yapılsın mı?`,
+                    distance: dist
                 });
             }
 
-            // 3. Ortak Lokal Ofset (Hassasiyet Kaybını Önle)
-            const offsetX = bboxM.minX;
-            const offsetY = bboxM.minY;
+            // 3. Otomatik Hizalama (Translation) - Eğer kullanıcı onay verdiyse
+            if (autoAlign && dist > 0.001) {
+                const tx = bboxM.minX - bboxP.minX;
+                const ty = bboxM.minY - bboxP.minY;
+                ptsProje.forEach(p => {
+                    p.x += tx;
+                    p.y += ty;
+                });
+                console.log(`Otomatik Hizalama Uygulandı: ΔX=${tx.toFixed(3)}, ΔY=${ty.toFixed(3)}`);
+            }
+
+            // 4. Ortak Lokal Ofset (Hassasiyet Kaybını Önle)
+            // Her iki veri seti artık aynı koordinat evreninde. 
+            // Büyük UTM koordinatlarında hassasiyet için ofset uyguluyoruz.
+            const newBBoxM = getBBox(ptsMevcut); 
+            const offsetX = newBBoxM.minX;
+            const offsetY = newBBoxM.minY;
 
             const DelaunatorModule = await import('delaunator');
             const Delaunator = DelaunatorModule.default || DelaunatorModule;

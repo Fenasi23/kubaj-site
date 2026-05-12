@@ -957,7 +957,7 @@ function App() {
     }
   };
 
-  const handleFilesUpload = async () => {
+  const handleFilesUpload = async (forceAutoAlign = false) => {
     if (!selectedFirm || !selectedProject) {
       alert("Lütfen önce bir firma ve iş (proje) seçiniz veya oluşturunuz.");
       return;
@@ -979,10 +979,14 @@ function App() {
         formData.append('file_enkesit', enkesitFile);
     }
     
+    formData.append('method', calcMethod);
+    formData.append('maxEdgeLimit', maxEdgeLimit);
+    if (forceAutoAlign) {
+        formData.append('autoAlign', 'true');
+    }
+    
     setLoading(true);
     try {
-      formData.append('method', calcMethod);
-      formData.append('maxEdgeLimit', maxEdgeLimit);
       const resp = await axios.post(`${API_URL}/api/upload`, formData, getHeaders());
       setPoints(resp.data.points || []);
       setResults(resp.data.results || null);
@@ -1003,7 +1007,14 @@ function App() {
         yukleniciFirma: prev.yukleniciFirma || selectedFirm?.name || ''
       }));
     } catch (error) {
-      alert('Hata: ' + (error.response?.data?.error || error.response?.data || error.message));
+      const errorData = error.response?.data;
+      if (errorData?.error === 'ALIGNMENT_REQUIRED') {
+          if (window.confirm(`${errorData.message}\n\n${errorData.detail}`)) {
+              handleFilesUpload(true);
+              return;
+          }
+      }
+      alert('Hata: ' + (errorData?.error || error.message));
     } finally {
       setLoading(false);
     }
