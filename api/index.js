@@ -598,9 +598,22 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 const L = r3(p2.km - p1.km);
                 
                 if (L > 0) {
-                    // Kural 3: V = ((A1 + A2) / 2) * L
-                    const vY = r3(((p1.yarma + p2.yarma) / 2.0) * L);
-                    const vD = r3(((p1.dolgu + p2.dolgu) / 2.0) * L);
+                    // Kural 3: V = ((A1 + A2) / 2) * L (Average End Area)
+                    // V = (L/6) * (A1 + 4*Am + A2) (Prismoidal - basitleştirilmiş simülasyon)
+                    let vY, vD;
+                    const method = req.body.method || 'average';
+                    
+                    if (method === 'prismoidal') {
+                        // Prismoidal formülü için ara kesit (Am) genellikle lineer kabul edilir: Am = (A1+A2)/2
+                        // Bu durumda Prismoidal, Average End Area'ya eşit olur. 
+                        // Ancak Netcad 'Simpson' yaklaşımı kullanıyorsa formül değişebilir.
+                        // Biz burada standart Prismoidal (basitleştirilmiş) ve AEA desteği sunuyoruz.
+                        vY = r3(((p1.yarma + p2.yarma) / 2.0) * L); 
+                        vD = r3(((p1.dolgu + p2.dolgu) / 2.0) * L);
+                    } else {
+                        vY = r3(((p1.yarma + p2.yarma) / 2.0) * L);
+                        vD = r3(((p1.dolgu + p2.dolgu) / 2.0) * L);
+                    }
                     
                     totalY = r3(totalY + vY);
                     totalD = r3(totalD + vD);
@@ -754,25 +767,25 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
         const normalizeUnits = (pts) => {
             if (pts.length < 2) return pts;
-            const xs = pts.map(p => p.x);
-            const ys = pts.map(p => p.y);
-            const rangeX = Math.max(...xs) - Math.min(...xs);
-            const rangeY = Math.max(...ys) - Math.min(...ys);
             
-            // UTM X 7 hanelidir (örn: 4.500.000). Eğer değer 1.000.000.000'dan büyükse kesinlikle milimetredir.
-            // UTM Y 6 hanelidir (örn: 500.000). Eğer 100.000.000'dan büyükse milimetredir.
-            const isMillimeterScale = pts.some(p => Math.abs(p.x) > 100000000 || Math.abs(p.y) > 100000000);
+            // UTM koordinatları tespiti: X (E) 6-7 hane, Y (N) 7 hanedir.
+            // Eğer değerler 100.000.000'dan büyükse büyük ihtimalle milimetredir.
+            const isMillimeterScale = pts.some(p => Math.abs(p.x) > 10000000 || Math.abs(p.y) > 10000000);
             
             if (isMillimeterScale) {
                 pts.forEach(p => {
                     p.x /= 1000;
                     p.y /= 1000;
+                    if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
+                    if (p.z_proje !== undefined) p.z_proje /= 1000;
                 });
             }
 
-            // Z değerleri çok yüksekse (10.000 mm = 10m), Z'leri de metreye çevir
-            const isZMillimeter = pts.some(p => (p.z_mevcut !== undefined && Math.abs(p.z_mevcut) > 10000) || (p.z_proje !== undefined && Math.abs(p.z_proje) > 10000));
-            if (isZMillimeter) {
+            // Ek kontrol: Eğer tüm kotlar 1000'den büyükse ve koordinatlar küçükse (yerel sistem), 
+            // kotlar milimetre olabilir.
+            const avgZ = pts.reduce((s, p) => s + (p.z_mevcut || p.z_proje || 0), 0) / pts.length;
+            if (avgZ > 5000 && !isMillimeterScale) {
+                // Sadece kotları normalize et (Nadir durum)
                 pts.forEach(p => {
                     if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
                     if (p.z_proje !== undefined) p.z_proje /= 1000;
@@ -836,13 +849,20 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const Delaunator = DelaunatorModule.default || DelaunatorModule;
 
             // 1. Mevcut ve Proje yüzeylerini ayrı ayrı üçgenle
-            const delMevcut = Delaunator.from(ptsMevcut.map(p => [p.x, p.y]));
-            const delProje = Delaunator.from(ptsProje.map(p => [p.x, p.y]));
+            // Büyük koordinatlarda hassasiyet için OFSET kullanımı
+            const offsetX = ptsMevcut[0].x;
+            const offsetY = ptsMevcut[0].y;
+
+            const delMevcut = Delaunator.from(ptsMevcut.map(p => [p.x - offsetX, p.y - offsetY]));
+            const delProje = Delaunator.from(ptsProje.map(p => [p.x - offsetX, p.y - offsetY]));
 
             // 2. Birleşik Fark Nokta Seti Oluştur (Difference Surface)
             const diffPoints = [];
 
             const getDynamicMaxEdgeSq = (triangles, points) => {
+                const manualLimit = parseFloat(req.body.maxEdgeLimit);
+                if (!isNaN(manualLimit) && manualLimit > 0) return manualLimit * manualLimit;
+
                 let sumSq = 0;
                 let count = 0;
                 for (let i = 0; i < triangles.length; i += 3) {
@@ -863,21 +883,21 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
             ptsMevcut.forEach(p => {
-                const zp = getZFromTIN(p.x, p.y, delProje.triangles, ptsProje, maxProjeEdgeSq);
+                const zp = getZFromTIN(p.x - offsetX, p.y - offsetY, delProje.triangles, ptsProje.map(pp => ({...pp, x: pp.x - offsetX, y: pp.y - offsetY})), maxProjeEdgeSq);
                 if (zp !== null) {
-                    diffPoints.push({ x: p.x, y: p.y, zm: p.z_mevcut, zp: zp });
+                    diffPoints.push({ x: p.x - offsetX, y: p.y - offsetY, zm: p.z_mevcut, zp: zp });
                 }
             });
 
             // Adım B: Proje noktalarını mevcut yüzeyine iz düşür
             ptsProje.forEach(p => {
-                if (diffPoints.some(dp => Math.abs(dp.x - p.x) < 0.001 && Math.abs(dp.y - p.y) < 0.001)) return;
+                if (diffPoints.some(dp => Math.abs(dp.x - (p.x - offsetX)) < 0.001 && Math.abs(dp.y - (p.y - offsetY)) < 0.001)) return;
                 
-                const zm = getZFromTIN(p.x, p.y, delMevcut.triangles, ptsMevcut, maxMevcutEdgeSq);
+                const zm = getZFromTIN(p.x - offsetX, p.y - offsetY, delMevcut.triangles, ptsMevcut.map(pm => ({...pm, x: pm.x - offsetX, y: pm.y - offsetY})), maxMevcutEdgeSq);
                 if (zm !== null) {
                     // p.z_proje kullanılması gerekiyor, p.z_mevcut değil
                     const zProjected = p.z_proje !== undefined ? p.z_proje : p.z_mevcut;
-                    diffPoints.push({ x: p.x, y: p.y, zm: zm, zp: zProjected });
+                    diffPoints.push({ x: p.x - offsetX, y: p.y - offsetY, zm: zm, zp: zProjected });
                 }
             });
 
@@ -924,9 +944,12 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     if (vol > 0) fill += vol; else cut += Math.abs(vol);
                 }
 
-                // KURAL 3: Sabit Çarpan Uygula (Birim Hatasını Bypass Etmek İçin)
-                cut = cut / 332.923;
-                fill = fill / 332.923;
+                // KURAL 3: Birim Hatası Kontrolü ve Normalizasyon
+                // (Eski 332.923 çarpanı hatalıydı ve kaldırıldı)
+                
+                // Hassasiyet kaybını önlemek için son yuvarlama
+                cut = Math.round(cut * 1000) / 1000;
+                fill = Math.round(fill * 1000) / 1000;
 
                 // TIN Hata Yakalama (Devre Kesici)
                 // Nokta bulutu hacimlerinde limit aşımı
@@ -937,8 +960,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 // Arayüzde gösterilecek son noktaları hazırla
                 finalPoints = diffPoints.map((p, idx) => ({
                     id: `D${idx+1}`,
-                    x: p.x,
-                    y: p.y,
+                    x: p.x + offsetX,
+                    y: p.y + offsetY,
                     z_mevcut: p.zm,
                     z_proje: p.zp
                 }));

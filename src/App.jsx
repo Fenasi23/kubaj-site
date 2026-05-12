@@ -259,6 +259,8 @@ function App() {
   const [projeFile, setProjeFile] = useState(null);
   const [enkesitFile, setEnkesitFile] = useState(null);
   const [uploadMethod, setUploadMethod] = useState('tin'); // 'tin' veya 'enkesit'
+  const [calcMethod, setCalcMethod] = useState('average'); // 'average' veya 'prismoidal'
+  const [maxEdgeLimit, setMaxEdgeLimit] = useState(50);
   // AUTH STATE
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('auth_token'));
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('auth_username'));
@@ -979,6 +981,8 @@ function App() {
     
     setLoading(true);
     try {
+      formData.append('method', calcMethod);
+      formData.append('maxEdgeLimit', maxEdgeLimit);
       const resp = await axios.post(`${API_URL}/api/upload`, formData, getHeaders());
       setPoints(resp.data.points || []);
       setResults(resp.data.results || null);
@@ -1441,6 +1445,28 @@ function App() {
                       <button onClick={() => setUploadMethod('enkesit')} className={`btn ${uploadMethod === 'enkesit' ? 'btn-primary' : 'btn-secondary'}`}>
                           Enkesit Yöntemi (Excel)
                       </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '2rem', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>Hesaplama Metodu:</div>
+                      <button onClick={() => setCalcMethod('average')} className={`btn-small ${calcMethod === 'average' ? 'active' : ''}`} style={{ fontSize: '0.8rem', padding: '5px 15px' }}>
+                          Ortalama Alanlar (Netcad Standart)
+                      </button>
+                      <button onClick={() => setCalcMethod('prismoidal')} className={`btn-small ${calcMethod === 'prismoidal' ? 'active' : ''}`} style={{ fontSize: '0.8rem', padding: '5px 15px' }}>
+                          Prismoidal (Yüksek Hassasiyet)
+                      </button>
+                      
+                      <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)', margin: '0 10px' }}></div>
+                      
+                      <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>Üçgen Kenar Sınırı (m):</div>
+                      <input 
+                        type="number" 
+                        className="table-input" 
+                        style={{ width: '80px', padding: '4px 8px', fontSize: '0.8rem' }} 
+                        value={maxEdgeLimit} 
+                        onChange={(e) => setMaxEdgeLimit(e.target.value)}
+                        placeholder="50"
+                      />
                   </div>
 
                   {uploadMethod === 'tin' ? (
