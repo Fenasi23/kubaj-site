@@ -785,25 +785,29 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             if (pts.length < 2) return pts;
             
             // 1. Koordinat Birim Sistemi Kontrolü (UTM/ITRF)
+            // Eğer koordinatlar 10M'den büyükse muhtemelen milimetredir.
             const isMillimeterScale = pts.some(p => Math.abs(p.x) > 10000000 || Math.abs(p.y) > 10000000);
             
             if (isMillimeterScale) {
                 pts.forEach(p => {
                     p.x /= 1000;
                     p.y /= 1000;
+                    if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
+                    if (p.z_proje !== undefined) p.z_proje /= 1000;
                 });
             }
 
             // 2. Kot (Elevation) Birim Sistemi Kontrolü (Hassas Düzeltme)
-            // Eğer ortalama kot 5000m'den büyükse muhtemelen milimetredir (Türkiye için ortalama 1000m)
-            const avgZ = pts.reduce((s, p) => s + (p.z_mevcut || p.z_proje || 0), 0) / pts.length;
-            const isZMillimeter = Math.abs(avgZ) > 5000;
-
-            if (isZMillimeter) {
-                pts.forEach(p => {
-                    if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
-                    if (p.z_proje !== undefined) p.z_proje /= 1000;
-                });
+            // Eğer ortalama kot 5000m'den büyükse muhtemelen milimetredir.
+            const zVals = pts.map(p => p.z_mevcut || p.z_proje || 0).filter(z => z !== 0);
+            if (zVals.length > 0) {
+                const avgZ = zVals.reduce((a, b) => a + b, 0) / zVals.length;
+                if (Math.abs(avgZ) > 5000) {
+                    pts.forEach(p => {
+                        if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
+                        if (p.z_proje !== undefined) p.z_proje /= 1000;
+                    });
+                }
             }
 
             return pts;
@@ -875,35 +879,30 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 maxY: Math.max(...pts.map(p => p.y))
             });
 
-            const bboxM = getBBox(ptsMevcut);
-            const bboxP = getBBox(ptsProje);
+            const getCentroid = (pts) => ({
+                x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+                y: pts.reduce((s, p) => s + p.y, 0) / pts.length
+            });
 
-            const dist = Math.hypot(bboxM.minX - bboxP.minX, bboxM.minY - bboxP.minY);
-            const autoAlign = req.body.autoAlign === 'true' || req.body.autoAlign === true;
+            const centroidM = getCentroid(ptsMevcut);
+            const centroidP = getCentroid(ptsProje);
 
-            if (dist > 100 && !autoAlign) {
-                return res.status(400).json({ 
-                    error: 'ALIGNMENT_REQUIRED',
-                    message: `Dosyalar arası mesafe ${dist.toFixed(0)} metre. Koordinat evrenleri farklı olabilir.`,
-                    detail: `Mevcut: (${bboxM.minX.toFixed(0)}, ${bboxM.minY.toFixed(0)}), Proje: (${bboxP.minX.toFixed(0)}, ${bboxP.minY.toFixed(0)}). Otomatik hizalama yapılsın mı?`,
-                    distance: dist
-                });
-            }
-
-            // 3. Otomatik Hizalama (Translation) - Eğer kullanıcı onay verdiyse
-            if (autoAlign && dist > 0.001) {
-                const tx = bboxM.minX - bboxP.minX;
-                const ty = bboxM.minY - bboxP.minY;
+            const dist = Math.hypot(centroidM.x - centroidP.x, centroidM.y - centroidP.y);
+            
+            // OTOMATİK HİZALAMA (Centroid Matching): 
+            // Eğer ağırlık merkezleri arasındaki mesafe 1 metreden fazlaysa 
+            // otomatik olarak ikinci alımı birincinin koordinat evrenine taşı.
+            if (dist > 1.0) {
+                const tx = centroidM.x - centroidP.x;
+                const ty = centroidM.y - centroidP.y;
                 ptsProje.forEach(p => {
                     p.x += tx;
                     p.y += ty;
                 });
-                console.log(`Otomatik Hizalama Uygulandı: ΔX=${tx.toFixed(3)}, ΔY=${ty.toFixed(3)}`);
+                debugData.autoAlignment = { tx: tx.toFixed(3), ty: ty.toFixed(3), dist: dist.toFixed(3) };
             }
 
-            // 4. Ortak Lokal Ofset (Hassasiyet Kaybını Önle)
-            // Her iki veri seti artık aynı koordinat evreninde. 
-            // Büyük UTM koordinatlarında hassasiyet için ofset uyguluyoruz.
+            // 3. Ortak Lokal Ofset (Hassasiyet Kaybını Önle)
             const newBBoxM = getBBox(ptsMevcut); 
             const offsetX = newBBoxM.minX;
             const offsetY = newBBoxM.minY;
