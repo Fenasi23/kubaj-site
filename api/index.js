@@ -352,11 +352,13 @@ const upload = multer({ dest: '/tmp/' }); // Vercel için /tmp kullanıyoruz
  * @param {Array} points - Noktalar listesi
  * @returns {number|null} Hesaplanmış kot veya dışındaysa null
  */
-function getZFromTIN(x, y, triangles, points, maxEdgeSq = Infinity) {
+function getZFromTIN(x, y, triangles, points, maxEdgeSq = Infinity, zField = 'z_mevcut') {
     for (let i = 0; i < triangles.length; i += 3) {
         const p0 = points[triangles[i]];
         const p1 = points[triangles[i+1]];
         const p2 = points[triangles[i+2]];
+
+        if (!p0 || !p1 || !p2) continue;
 
         if (maxEdgeSq !== Infinity) {
             const d1 = Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
@@ -365,26 +367,21 @@ function getZFromTIN(x, y, triangles, points, maxEdgeSq = Infinity) {
             if (d1 > maxEdgeSq || d2 > maxEdgeSq || d3 > maxEdgeSq) continue;
         }
 
-        // Barycentric Koordinat Hesaplama
-        // det = (y2 - y3)(x1 - x3) + (x3 - x2)(y1 - y3)
         const det = (p1.y - p2.y) * (p0.x - p2.x) + (p2.x - p1.x) * (p0.y - p2.y);
-        
-        // Eğer üçgen çok dar veya çizgisel ise det 0 olur, atla
         if (Math.abs(det) < 1e-10) continue;
 
         const w1 = ((p1.y - p2.y) * (x - p2.x) + (p2.x - p1.x) * (y - p2.y)) / det;
         const w2 = ((p2.y - p0.y) * (x - p2.x) + (p0.x - p2.x) * (y - p2.y)) / det;
         const w3 = 1 - w1 - w2;
 
-        // Nokta üçgenin içinde mi? (Küçük bir toleransla)
         if (w1 >= -1e-7 && w2 >= -1e-7 && w3 >= -1e-7) {
-            const z0 = p0.z_mevcut !== undefined ? p0.z_mevcut : p0.z || 0;
-            const z1 = p1.z_mevcut !== undefined ? p1.z_mevcut : p1.z || 0;
-            const z2 = p2.z_mevcut !== undefined ? p2.z_mevcut : p2.z || 0;
+            const z0 = p0[zField] !== undefined ? p0[zField] : (p0.z || 0);
+            const z1 = p1[zField] !== undefined ? p1[zField] : (p1.z || 0);
+            const z2 = p2[zField] !== undefined ? p2[zField] : (p2.z || 0);
             return w1 * z0 + w2 * z1 + w3 * z2;
         }
     }
-    return null; // Nokta üçgen ağının dışında
+    return null; 
 }
 
 const parseFormattedValue = (val) => {
@@ -747,45 +744,47 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         };
 
         const filterXYOutliersIQR = (pts) => {
-            if (pts.length < 10) return pts;
-            const sortedX = [...pts].map(p => p.x).sort((a, b) => a - b);
-            const sortedY = [...pts].map(p => p.y).sort((a, b) => a - b);
-            const q1X = sortedX[Math.floor(pts.length * 0.25)];
-            const q3X = sortedX[Math.floor(pts.length * 0.75)];
-            const iqrX = Math.max(q3X - q1X, 500); 
-            const q1Y = sortedY[Math.floor(pts.length * 0.25)];
-            const q3Y = sortedY[Math.floor(pts.length * 0.75)];
-            const iqrY = Math.max(q3Y - q1Y, 500);
+            // 1. Mutlak 0,0 Filtresi (Datum Kayması Önleme)
+            let filtered = pts.filter(p => Math.abs(p.x) > 0.001 && Math.abs(p.y) > 0.001);
             
-            const minX = q1X - 3.0 * iqrX;
-            const maxX = q3X + 3.0 * iqrX;
-            const minY = q1Y - 3.0 * iqrY;
-            const maxY = q3Y + 3.0 * iqrY;
+            if (filtered.length < 10) return filtered;
+
+            const sortedX = [...filtered].map(p => p.x).sort((a, b) => a - b);
+            const sortedY = [...filtered].map(p => p.y).sort((a, b) => a - b);
+            const q1X = sortedX[Math.floor(filtered.length * 0.25)];
+            const q3X = sortedX[Math.floor(filtered.length * 0.75)];
+            const iqrX = Math.max(q3X - q1X, 100); 
+            const q1Y = sortedY[Math.floor(filtered.length * 0.25)];
+            const q3Y = sortedY[Math.floor(filtered.length * 0.75)];
+            const iqrY = Math.max(q3Y - q1Y, 100);
             
-            return pts.filter(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
+            const minX = q1X - 5.0 * iqrX; // 5x IQR (Daha esnek ama güvenli)
+            const maxX = q3X + 5.0 * iqrX;
+            const minY = q1Y - 5.0 * iqrY;
+            const maxY = q3Y + 5.0 * iqrY;
+            
+            return filtered.filter(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
         };
 
         const normalizeUnits = (pts) => {
             if (pts.length < 2) return pts;
             
-            // UTM koordinatları tespiti: X (E) 6-7 hane, Y (N) 7 hanedir.
-            // Eğer değerler 100.000.000'dan büyükse büyük ihtimalle milimetredir.
+            // 1. Koordinat Birim Sistemi Kontrolü (UTM/ITRF)
             const isMillimeterScale = pts.some(p => Math.abs(p.x) > 10000000 || Math.abs(p.y) > 10000000);
             
             if (isMillimeterScale) {
                 pts.forEach(p => {
                     p.x /= 1000;
                     p.y /= 1000;
-                    if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
-                    if (p.z_proje !== undefined) p.z_proje /= 1000;
                 });
             }
 
-            // Ek kontrol: Eğer tüm kotlar 1000'den büyükse ve koordinatlar küçükse (yerel sistem), 
-            // kotlar milimetre olabilir.
+            // 2. Kot (Elevation) Birim Sistemi Kontrolü (Hassas Düzeltme)
+            // Eğer ortalama kot 5000m'den büyükse muhtemelen milimetredir (Türkiye için ortalama 1000m)
             const avgZ = pts.reduce((s, p) => s + (p.z_mevcut || p.z_proje || 0), 0) / pts.length;
-            if (avgZ > 5000 && !isMillimeterScale) {
-                // Sadece kotları normalize et (Nadir durum)
+            const isZMillimeter = Math.abs(avgZ) > 5000;
+
+            if (isZMillimeter) {
                 pts.forEach(p => {
                     if (p.z_mevcut !== undefined) p.z_mevcut /= 1000;
                     if (p.z_proje !== undefined) p.z_proje /= 1000;
@@ -881,23 +880,27 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const maxMevcutEdgeSq = getDynamicMaxEdgeSq(delMevcut.triangles, ptsMevcut);
             const maxProjeEdgeSq = getDynamicMaxEdgeSq(delProje.triangles, ptsProje);
 
+            // PERFORMANS: Ofsetli nokta setlerini önceden hazırla
+            const ptsMevcutOffset = ptsMevcut.map(p => ({ ...p, x: p.x - offsetX, y: p.y - offsetY }));
+            const ptsProjeOffset = ptsProje.map(p => ({ ...p, x: p.x - offsetX, y: p.y - offsetY }));
+
             // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
-            ptsMevcut.forEach(p => {
-                const zp = getZFromTIN(p.x - offsetX, p.y - offsetY, delProje.triangles, ptsProje.map(pp => ({...pp, x: pp.x - offsetX, y: pp.y - offsetY})), maxProjeEdgeSq);
+            ptsMevcutOffset.forEach(p => {
+                const zp = getZFromTIN(p.x, p.y, delProje.triangles, ptsProjeOffset, maxProjeEdgeSq, 'z_proje');
                 if (zp !== null) {
-                    diffPoints.push({ x: p.x - offsetX, y: p.y - offsetY, zm: p.z_mevcut, zp: zp });
+                    diffPoints.push({ x: p.x, y: p.y, zm: p.z_mevcut, zp: zp });
                 }
             });
 
             // Adım B: Proje noktalarını mevcut yüzeyine iz düşür
-            ptsProje.forEach(p => {
-                if (diffPoints.some(dp => Math.abs(dp.x - (p.x - offsetX)) < 0.001 && Math.abs(dp.y - (p.y - offsetY)) < 0.001)) return;
+            ptsProjeOffset.forEach(p => {
+                const px = p.x;
+                const py = p.y;
+                if (diffPoints.some(dp => Math.abs(dp.x - px) < 0.001 && Math.abs(dp.y - py) < 0.001)) return;
                 
-                const zm = getZFromTIN(p.x - offsetX, p.y - offsetY, delMevcut.triangles, ptsMevcut.map(pm => ({...pm, x: pm.x - offsetX, y: pm.y - offsetY})), maxMevcutEdgeSq);
+                const zm = getZFromTIN(px, py, delMevcut.triangles, ptsMevcutOffset, maxMevcutEdgeSq, 'z_mevcut');
                 if (zm !== null) {
-                    // p.z_proje kullanılması gerekiyor, p.z_mevcut değil
-                    const zProjected = p.z_proje !== undefined ? p.z_proje : p.z_mevcut;
-                    diffPoints.push({ x: p.x - offsetX, y: p.y - offsetY, zm: zm, zp: zProjected });
+                    diffPoints.push({ x: px, y: py, zm: zm, zp: p.z_proje });
                 }
             });
 
