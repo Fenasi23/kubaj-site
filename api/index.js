@@ -434,17 +434,17 @@ const parseNcz = (buffer) => {
             const x = data.readDoubleLE(i + 8);
             const z = data.readDoubleLE(i + 16);
 
-            const isValidVal = (v) => !isNaN(v) && isFinite(v) && Math.abs(v) < 10000000;
+            const isValidVal = (v) => typeof v === 'number' && !isNaN(v) && isFinite(v) && Math.abs(v) < 10000000;
             
-            if (isValidVal(y) && isValidVal(x) && Math.abs(z) < 1000000) {
-                const inRange = (y > -1000000 && y < 10000000 && x > -1000000 && x < 10000000);
+            if (isValidVal(y) && isValidVal(x) && isValidVal(z)) {
+                const inRange = (y > -2000000 && y < 20000000 && x > -2000000 && x < 20000000);
                 
                 if (inRange && Math.abs(y) > 0.001 && Math.abs(x) > 0.001) {
                     const p = {
                         id: `N${points.length + 1}`,
-                        y: y,
-                        x: x,
-                        z_mevcut: z,
+                        y: Number(y.toFixed(6)),
+                        x: Number(x.toFixed(6)),
+                        z_mevcut: Number(z.toFixed(4)),
                         z_proje: 0
                     };
                     points.push(p);
@@ -879,19 +879,21 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 maxY: Math.max(...pts.map(p => p.y))
             });
 
-            const getCentroid = (pts) => ({
-                x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
-                y: pts.reduce((s, p) => s + p.y, 0) / pts.length
-            });
-
             const centroidM = getCentroid(ptsMevcut);
             const centroidP = getCentroid(ptsProje);
 
             const dist = Math.hypot(centroidM.x - centroidP.x, centroidM.y - centroidP.y);
             
-            // OTOMATİK HİZALAMA (Centroid Matching): 
-            // Eğer ağırlık merkezleri arasındaki mesafe 1 metreden fazlaysa 
-            // otomatik olarak ikinci alımı birincinin koordinat evrenine taşı.
+            // KORUMA: Eğer mesafe 10km'den fazlaysa sistemi kilitlememek için durdur.
+            if (dist > 10000) {
+                return res.status(400).json({
+                    error: 'KRİTİK_KOORDİNAT_HATASI',
+                    message: `Dosyalar arası mesafe çok büyük (${(dist/1000).toFixed(1)} km).`,
+                    detail: 'Hata: İki alım farklı şehirlerde veya farklı projeksiyon sistemlerinde (Örn: ITRF vs Yerel) görünüyor. Lütfen dosyaları kontrol edin.'
+                });
+            }
+
+            // OTOMATİK HİZALAMA
             if (dist > 1.0) {
                 const tx = centroidM.x - centroidP.x;
                 const ty = centroidM.y - centroidP.y;
