@@ -369,43 +369,71 @@ const upload = multer({ dest: '/tmp/' }); // Vercel için /tmp kullanıyoruz
 // --- YARDIMCI GEOMETRİ FONKSİYONLARI ---
 
 /**
- * Üçgen içindeki bir noktanın kotunu (Z) Barycentric koordinat sistemi ile hesaplar.
- * @param {number} x - Hedef X koordinatı
- * @param {number} y - Hedef Y koordinatı
- * @param {Uint32Array} triangles - Üçgen indeksleri
- * @param {Array} points - Noktalar listesi
- * @returns {number|null} Hesaplanmış kot veya dışındaysa null
+ * Mekansal Izgara (Spatial Grid) Optimizasyonu
+ * Üçgenleri hücrelere bölerek Z sorgusunu O(T) yerine O(1) seviyesine indirir.
  */
-function getZFromTIN(x, y, triangles, points, maxEdgeSq = Infinity, zField = 'z_mevcut') {
+function createSpatialGrid(points, triangles, bbox, gridSize = 40) {
+    const grid = Array.from({ length: gridSize * gridSize }, () => []);
+    const cellWidth = (bbox.maxX - bbox.minX) / gridSize;
+    const cellHeight = (bbox.maxY - bbox.minY) / gridSize;
+
     for (let i = 0; i < triangles.length; i += 3) {
         const p0 = points[triangles[i]];
         const p1 = points[triangles[i+1]];
         const p2 = points[triangles[i+2]];
 
-        if (!p0 || !p1 || !p2) continue;
+        const tMinX = Math.min(p0.x, p1.x, p2.x);
+        const tMaxX = Math.max(p0.x, p1.x, p2.x);
+        const tMinY = Math.min(p0.y, p1.y, p2.y);
+        const tMaxY = Math.max(p0.y, p1.y, p2.y);
 
-        if (maxEdgeSq !== Infinity) {
-            const d1 = Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
-            const d2 = Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
-            const d3 = Math.pow(p2.x - p0.x, 2) + Math.pow(p2.y - p0.y, 2);
-            if (d1 > maxEdgeSq || d2 > maxEdgeSq || d3 > maxEdgeSq) continue;
+        const startX = Math.floor((tMinX - bbox.minX) / cellWidth);
+        const endX = Math.floor((tMaxX - bbox.minX) / cellWidth);
+        const startY = Math.floor((tMinY - bbox.minY) / cellHeight);
+        const endY = Math.floor((tMaxY - bbox.minY) / cellHeight);
+
+        for (let gx = Math.max(0, startX); gx <= Math.min(gridSize - 1, endX); gx++) {
+            for (let gy = Math.max(0, startY); gy <= Math.min(gridSize - 1, endY); gy++) {
+                grid[gy * gridSize + gx].push(i);
+            }
         }
+    }
+    return { grid, cellWidth, cellHeight, gridSize, bbox };
+}
+
+function getZFromGrid(x, y, spatialGrid, points, triangles, maxEdgeSq, zField) {
+    const { grid, cellWidth, cellHeight, gridSize, bbox } = spatialGrid;
+    
+    const gx = Math.floor((x - bbox.minX) / cellWidth);
+    const gy = Math.floor((y - bbox.minY) / cellHeight);
+    
+    if (gx < 0 || gx >= gridSize || gy < 0 || gy >= gridSize) return null;
+    
+    const triIndices = grid[gy * gridSize + gx];
+    for (const i of triIndices) {
+        const p0 = points[triangles[i]];
+        const p1 = points[triangles[i+1]];
+        const p2 = points[triangles[i+2]];
+
+        // Kenar Uzunluğu Kontrolü (Delaunay Convex Hull Boşlukları İçin)
+        const d1 = Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
+        const d2 = Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
+        const d3 = Math.pow(p2.x - p0.x, 2) + Math.pow(p2.y - p0.y, 2);
+        if (d1 > maxEdgeSq || d2 > maxEdgeSq || d3 > maxEdgeSq) continue;
 
         const det = (p1.y - p2.y) * (p0.x - p2.x) + (p2.x - p1.x) * (p0.y - p2.y);
-        if (Math.abs(det) < 1e-10) continue;
+        const l1 = ((p1.y - p2.y) * (x - p2.x) + (p2.x - p1.x) * (y - p2.y)) / det;
+        const l2 = ((p2.y - p0.y) * (x - p2.x) + (p0.x - p2.x) * (y - p2.y)) / det;
+        const l3 = 1 - l1 - l2;
 
-        const w1 = ((p1.y - p2.y) * (x - p2.x) + (p2.x - p1.x) * (y - p2.y)) / det;
-        const w2 = ((p2.y - p0.y) * (x - p2.x) + (p0.x - p2.x) * (y - p2.y)) / det;
-        const w3 = 1 - w1 - w2;
-
-        if (w1 >= -1e-7 && w2 >= -1e-7 && w3 >= -1e-7) {
+        if (l1 >= -1e-7 && l2 >= -1e-7 && l3 >= -1e-7) {
             const z0 = p0[zField] !== undefined ? p0[zField] : (p0.z || 0);
             const z1 = p1[zField] !== undefined ? p1[zField] : (p1.z || 0);
             const z2 = p2[zField] !== undefined ? p2[zField] : (p2.z || 0);
-            return w1 * z0 + w2 * z1 + w3 * z2;
+            return l1 * z0 + l2 * z1 + l3 * z2;
         }
     }
-    return null; 
+    return null;
 }
 
 const parseFormattedValue = (val) => {
@@ -988,9 +1016,15 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const ptsMevcutOffset = ptsMevcut.map(p => ({ ...p, x: p.x - offsetX, y: p.y - offsetY }));
             const ptsProjeOffset = ptsProje.map(p => ({ ...p, x: p.x - offsetX, y: p.y - offsetY }));
 
+            const newBBoxM_Local = getBBox(ptsMevcutOffset);
+            const newBBoxP_Local = getBBox(ptsProjeOffset);
+
+            const spatialGridM = createSpatialGrid(ptsMevcutOffset, delMevcut.triangles, newBBoxM_Local);
+            const spatialGridP = createSpatialGrid(ptsProjeOffset, delProje.triangles, newBBoxP_Local);
+
             // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
             ptsMevcutOffset.forEach(p => {
-                const zp = getZFromTIN(p.x, p.y, delProje.triangles, ptsProjeOffset, maxProjeEdgeSq, 'z_proje');
+                const zp = getZFromGrid(p.x, p.y, spatialGridP, ptsProjeOffset, delProje.triangles, maxProjeEdgeSq, 'z_proje');
                 if (zp !== null) {
                     diffPoints.push({ x: p.x, y: p.y, zm: p.z_mevcut, zp: zp });
                 }
@@ -1002,7 +1036,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 const py = p.y;
                 if (diffPoints.some(dp => Math.abs(dp.x - px) < 0.001 && Math.abs(dp.y - py) < 0.001)) return;
                 
-                const zm = getZFromTIN(px, py, delMevcut.triangles, ptsMevcutOffset, maxMevcutEdgeSq, 'z_mevcut');
+                const zm = getZFromGrid(px, py, spatialGridM, ptsMevcutOffset, delMevcut.triangles, maxMevcutEdgeSq, 'z_mevcut');
                 if (zm !== null) {
                     diffPoints.push({ x: px, y: py, zm: zm, zp: p.z_proje });
                 }

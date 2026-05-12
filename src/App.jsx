@@ -986,8 +986,15 @@ function App() {
     }
     
     setLoading(true);
+    
+    // Heartbeat/Liveness Monitor
+    const livenessTimer = setTimeout(() => {
+        alert("Hesaplama normalden uzun sürüyor. Sunucu yoğun olabilir veya dosya boyutu çok büyüktür. Lütfen beklemeye devam edin veya sayfayı yenileyip veriyi sadeleştirerek tekrar yükleyin.");
+    }, 15000);
+
     try {
       const resp = await axios.post(`${API_URL}/api/upload`, formData, getHeaders());
+      clearTimeout(livenessTimer);
       setPoints(resp.data.points || []);
       setResults(resp.data.results || null);
       if (resp.data.points?.length > 0) setActiveTab('results');
@@ -1007,6 +1014,7 @@ function App() {
         yukleniciFirma: prev.yukleniciFirma || selectedFirm?.name || ''
       }));
     } catch (error) {
+      clearTimeout(livenessTimer);
       const errorData = error.response?.data;
       if (errorData?.error === 'ALIGNMENT_REQUIRED') {
           if (window.confirm(`${errorData.message}\n\n${errorData.detail}`)) {
