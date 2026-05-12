@@ -374,8 +374,8 @@ const upload = multer({ dest: '/tmp/' }); // Vercel için /tmp kullanıyoruz
  */
 function createSpatialGrid(points, triangles, bbox, gridSize = 40) {
     const grid = Array.from({ length: gridSize * gridSize }, () => []);
-    const cellWidth = (bbox.maxX - bbox.minX) / gridSize;
-    const cellHeight = (bbox.maxY - bbox.minY) / gridSize;
+    const cellWidth = Math.max((bbox.maxX - bbox.minX) / gridSize, 0.01);
+    const cellHeight = Math.max((bbox.maxY - bbox.minY) / gridSize, 0.01);
 
     for (let i = 0; i < triangles.length; i += 3) {
         const p0 = points[triangles[i]];
@@ -1022,25 +1022,30 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const spatialGridM = createSpatialGrid(ptsMevcutOffset, delMevcut.triangles, newBBoxM_Local);
             const spatialGridP = createSpatialGrid(ptsProjeOffset, delProje.triangles, newBBoxP_Local);
 
+            const startTime = Date.now();
+            const MAX_CALC_TIME = 15000; // 15 Saniye limit
+
             // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
-            ptsMevcutOffset.forEach(p => {
+            for (const p of ptsMevcutOffset) {
+                if (Date.now() - startTime > MAX_CALC_TIME) throw new Error("Hesaplama süresi sınırı aşıldı (Timeout)");
                 const zp = getZFromGrid(p.x, p.y, spatialGridP, ptsProjeOffset, delProje.triangles, maxProjeEdgeSq, 'z_proje');
                 if (zp !== null) {
                     diffPoints.push({ x: p.x, y: p.y, zm: p.z_mevcut, zp: zp });
                 }
-            });
+            }
 
             // Adım B: Proje noktalarını mevcut yüzeyine iz düşür
-            ptsProjeOffset.forEach(p => {
+            for (const p of ptsProjeOffset) {
+                if (Date.now() - startTime > MAX_CALC_TIME) throw new Error("Hesaplama süresi sınırı aşıldı (Timeout)");
                 const px = p.x;
                 const py = p.y;
-                if (diffPoints.some(dp => Math.abs(dp.x - px) < 0.001 && Math.abs(dp.y - py) < 0.001)) return;
+                if (diffPoints.some(dp => Math.abs(dp.x - px) < 0.001 && Math.abs(dp.y - py) < 0.001)) continue;
                 
                 const zm = getZFromGrid(px, py, spatialGridM, ptsMevcutOffset, delMevcut.triangles, maxMevcutEdgeSq, 'z_mevcut');
                 if (zm !== null) {
                     diffPoints.push({ x: px, y: py, zm: zm, zp: p.z_proje });
                 }
-            });
+            }
 
             // Zemin-Taban farkı toleransı kaldırıldı, gerçek hacim hesaplanması için.
             diffPoints.forEach(dp => {
