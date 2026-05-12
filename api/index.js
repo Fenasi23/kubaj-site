@@ -892,15 +892,16 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             });
         }
 
-        // 2. Nokta Sayısı Kontrolü
-        const POINT_LIMIT = 30000; // Daha güvenli bir sınır
-        if (ptsMevcut.length > POINT_LIMIT || ptsProje.length > POINT_LIMIT) {
-            return res.status(400).json({ 
-                error: 'KAPASİTE_AŞIMI', 
-                message: `Dosyadaki nokta sayısı çok fazla (${Math.max(ptsMevcut.length, ptsProje.length)}).`,
-                detail: `Vercel sunucu limitleri gereği tek seferde en fazla ${POINT_LIMIT} nokta işlenebilir.`
-            });
-        }
+        // 2. Nokta Sayısı Kontrolü ve Otomatik Seyreltme (Decimation)
+        const POINT_LIMIT = 20000; 
+        const decimate = (pts, limit) => {
+            if (pts.length <= limit) return pts;
+            const factor = Math.ceil(pts.length / limit);
+            return pts.filter((_, i) => i % factor === 0);
+        };
+
+        ptsMevcut = decimate(ptsMevcut, POINT_LIMIT);
+        ptsProje = decimate(ptsProje, POINT_LIMIT);
 
         ptsMevcut.forEach(p => {
              if (p.z_mevcut < minZ) { minZ = p.z_mevcut; minPoint = p; }
@@ -951,17 +952,25 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 maxY: Math.max(...pts.map(p => p.y))
             });
 
+            const getCentroid = (pts) => ({
+                x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+                y: pts.reduce((s, p) => s + p.y, 0) / pts.length
+            });
+
+            const bboxM = getBBox(ptsMevcut);
+            const bboxP = getBBox(ptsProje);
+
             const centroidM = getCentroid(ptsMevcut);
             const centroidP = getCentroid(ptsProje);
 
             const dist = Math.hypot(centroidM.x - centroidP.x, centroidM.y - centroidP.y);
             
-            // KORUMA: Eğer mesafe 10km'den fazlaysa sistemi kilitlememek için durdur.
-            if (dist > 10000) {
+            // KORUMA: Eğer mesafe 1000 metreden fazlaysa işlemi başlatma.
+            if (dist > 1000) {
                 return res.status(400).json({
-                    error: 'KRİTİK_KOORDİNAT_HATASI',
-                    message: `Dosyalar arası mesafe çok büyük (${(dist/1000).toFixed(1)} km).`,
-                    detail: 'Hata: İki alım farklı şehirlerde veya farklı projeksiyon sistemlerinde (Örn: ITRF vs Yerel) görünüyor. Lütfen dosyaları kontrol edin.'
+                    error: 'KOORDİNAT_SİSTEMİ_HATASI',
+                    message: `Dosyalar arası mesafe çok büyük (${dist.toFixed(0)} metre).`,
+                    detail: 'Hata: İki alım farklı koordinat sistemlerinde görünüyor. Lütfen dosyaları Netcad\'de üst üste bindirip tekrar yükleyin.'
                 });
             }
 
@@ -976,10 +985,26 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 debugData.autoAlignment = { tx: tx.toFixed(3), ty: ty.toFixed(3), dist: dist.toFixed(3) };
             }
 
-            // 3. Ortak Lokal Ofset (Hassasiyet Kaybını Önle)
-            const newBBoxM = getBBox(ptsMevcut); 
-            const offsetX = newBBoxM.minX;
-            const offsetY = newBBoxM.minY;
+            // 3. Ortak Lokal Ofset ve Boundary Clipping (Overlap Alanı)
+            const overlapBBox = {
+                minX: Math.max(bboxM.minX, bboxP.minX) - 5,
+                maxX: Math.min(bboxM.maxX, bboxP.maxX) + 5,
+                minY: Math.max(bboxM.minY, bboxP.minY) - 5,
+                maxY: Math.min(bboxM.maxY, bboxP.maxY) + 5
+            };
+
+            // Sadece kesişim bölgesindeki noktaları al
+            ptsMevcut = ptsMevcut.filter(p => p.x >= overlapBBox.minX && p.x <= overlapBBox.maxX && p.y >= overlapBBox.minY && p.y <= overlapBBox.maxY);
+            ptsProje = ptsProje.filter(p => p.x >= overlapBBox.minX && p.x <= overlapBBox.maxX && p.y >= overlapBBox.minY && p.y <= overlapBBox.maxY);
+
+            if (ptsMevcut.length < 3 || ptsProje.length < 3) {
+                return res.status(400).json({ error: 'ÇAKIŞMA_HATASI', message: 'Dosyaların birbiriyle çakıştığı (overlap) alanda yeterli nokta bulunamadı.' });
+            }
+
+            const offsetX = overlapBBox.minX;
+            const offsetY = overlapBBox.minY;
+            const newBBoxM_Local = { minX: 0, maxX: overlapBBox.maxX - offsetX, minY: 0, maxY: overlapBBox.maxY - offsetY };
+            const newBBoxP_Local = { ...newBBoxM_Local };
 
             const DelaunatorModule = await import('delaunator');
             const Delaunator = DelaunatorModule.default || DelaunatorModule;
@@ -1035,17 +1060,22 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             }
 
             // Adım B: Proje noktalarını mevcut yüzeyine iz düşür
+            const diffKeys = new Set(diffPoints.map(dp => `${dp.x.toFixed(3)}-${dp.y.toFixed(3)}`));
+            
             for (const p of ptsProjeOffset) {
                 if (Date.now() - startTime > MAX_CALC_TIME) throw new Error("Hesaplama süresi sınırı aşıldı (Timeout)");
                 const px = p.x;
                 const py = p.y;
-                if (diffPoints.some(dp => Math.abs(dp.x - px) < 0.001 && Math.abs(dp.y - py) < 0.001)) continue;
+                const key = `${px.toFixed(3)}-${py.toFixed(3)}`;
+                if (diffKeys.has(key)) continue;
                 
                 const zm = getZFromGrid(px, py, spatialGridM, ptsMevcutOffset, delMevcut.triangles, maxMevcutEdgeSq, 'z_mevcut');
                 if (zm !== null) {
                     diffPoints.push({ x: px, y: py, zm: zm, zp: p.z_proje });
+                    diffKeys.add(key);
                 }
             }
+        }
 
             // Zemin-Taban farkı toleransı kaldırıldı, gerçek hacim hesaplanması için.
             diffPoints.forEach(dp => {

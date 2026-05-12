@@ -1022,7 +1022,12 @@ function App() {
               return;
           }
       }
-      alert('Hata: ' + (errorData?.error || error.message));
+      
+      let errorMessage = error.message;
+      if (errorData) {
+          errorMessage = typeof errorData === 'string' ? errorData : (errorData.message || errorData.error || JSON.stringify(errorData));
+      }
+      alert('Hata: ' + errorMessage);
     } finally {
       setLoading(false);
     }
