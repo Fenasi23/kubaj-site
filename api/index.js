@@ -976,17 +976,32 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const bboxM = getBBox(ptsMevcut);
             const bboxP = getBBox(ptsProje);
 
-            // KURAL: Mesafe Kontrolü (Safeguard)
-            // Mevcut ve Proje merkezleri arasındaki mesafe 500 metreden fazlaysa hesaplamayı başlatma.
+            // Kesişim (Overlap) Alanı Kontrolü
+            const overlapX = Math.max(0, Math.min(bboxM.maxX, bboxP.maxX) - Math.max(bboxM.minX, bboxP.minX));
+            const overlapY = Math.max(0, Math.min(bboxM.maxY, bboxP.maxY) - Math.max(bboxM.minY, bboxP.minY));
+            const overlapArea = overlapX * overlapY;
+            
+            const areaM = (bboxM.maxX - bboxM.minX) * (bboxM.maxY - bboxM.minY);
+            const areaP = (bboxP.maxX - bboxP.minX) * (bboxP.maxY - bboxP.minY);
+            const minArea = Math.min(areaM, areaP);
+            
+            // Eğer kesişim alanı toplam alanın %5'inden azsa hata döndür
+            if (overlapArea / minArea < 0.05 && req.body.autoAlign !== 'true') {
+                return res.status(400).json({ 
+                    error: 'COORD_INCOMPATIBILITY', 
+                    message: 'Koordinat Uyumsuzluğu: Dosyaların çakışma oranı çok düşük (%5\'ten az). Lütfen dosyaları aynı koordinat sisteminde olduğundan emin olun veya Netcad üzerinden hizalayın.' 
+                });
+            }
+
+            // KORUMA: Mesafe Kontrolü (Safeguard)
             const centerM = { x: (bboxM.minX + bboxM.maxX) / 2, y: (bboxM.minY + bboxM.maxY) / 2 };
             const centerP = { x: (bboxP.minX + bboxP.maxX) / 2, y: (bboxP.minY + bboxP.maxY) / 2 };
             const distCenters = Math.hypot(centerM.x - centerP.x, centerM.y - centerP.y);
-
-            if (distCenters > 500 && req.body.autoAlign !== 'true') {
+            
+            if (distCenters > 1000 && req.body.autoAlign !== 'true') {
                 return res.status(400).json({ 
                     error: 'ALIGNMENT_REQUIRED', 
-                    message: `Koordinat uyumsuzluğu tespit edildi! Mevcut ve Proje dosyalarının merkezleri arasındaki mesafe ${Math.round(distCenters)} metredir.`,
-                    detail: 'Dosyaları otomatik hizalamayı denemek ister misiniz?'
+                    message: `Dosya merkezleri arasındaki mesafe çok fazla (${Math.round(distCenters)}m).` 
                 });
             }
 
@@ -1049,19 +1064,9 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 const manualLimit = parseFloat(req.body.maxEdgeLimit);
                 if (!isNaN(manualLimit) && manualLimit > 0) return manualLimit * manualLimit;
 
-                let sumSq = 0;
-                let count = 0;
-                for (let i = 0; i < triangles.length; i += 3) {
-                    const p0 = points[triangles[i]];
-                    const p1 = points[triangles[i+1]];
-                    sumSq += Math.pow(p0.x - p1.x, 2) + Math.pow(p0.y - p1.y, 2);
-                    count++;
-                }
-                const avgSq = count > 0 ? (sumSq / count) : 0;
-                const avgDist = Math.sqrt(avgSq);
-                // Ortalama kenarın 5 katına kadar izin ver, minimum 50m tolerans
-                const limitDist = Math.max(avgDist * 5, 50);
-                return limitDist * limitDist;
+                // Varsayılan kenar limiti: 50 metre (Sistem kilitlenmesini önlemek için)
+                const DEFAULT_LIMIT = 50;
+                return DEFAULT_LIMIT * DEFAULT_LIMIT;
             };
 
             const maxMevcutEdgeSq = getDynamicMaxEdgeSq(delMevcut.triangles, ptsMevcut);
@@ -1078,7 +1083,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const spatialGridP = createSpatialGrid(ptsProjeOffset, delProje.triangles, newBBoxP_Local);
 
             const startTime = Date.now();
-            const MAX_CALC_TIME = 15000; // 15 Saniye limit
+            const MAX_CALC_TIME = 10000; // 10 Saniye limit (Kullanıcı Talebi)
 
             // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
             for (const p of ptsMevcutOffset) {
