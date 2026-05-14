@@ -990,8 +990,8 @@ function App() {
     
     // Heartbeat/Liveness Monitor
     const livenessTimer = setTimeout(() => {
-        alert("Hesaplama normalden uzun sürüyor. Sunucu yoğun olabilir veya dosya boyutu çok büyüktür. Lütfen beklemeye devam edin veya sayfayı yenileyip veriyi sadeleştirerek tekrar yükleyin.");
-    }, 60000);
+        console.warn("Hesaplama uzun sürüyor, Vercel limiti zorlanıyor...");
+    }, 10000);
 
     try {
       const resp = await axios.post(`${API_URL}/api/upload`, formData, getHeaders());

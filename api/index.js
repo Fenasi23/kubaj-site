@@ -495,8 +495,8 @@ const parseNcz = (buffer) => {
         // Netcad 8.0 ve üzeri için 64-bit Double taraması
         let lastX = 0, lastY = 0, currentPath = [];
         
-        const MAX_POINTS = 50000; // Vercel için 50k nokta sınırı (Stabilite için)
-        for (let i = 0; i < data.length - 24; i += 4) { // 4 byte adımlarla daha hızlı tarama
+        const MAX_POINTS = 15000; // Işık hızı için 15k nokta sınırı
+        for (let i = 0; i < data.length - 24; i += 8) { // 8 byte (Double boyutu) adımlarla ultra hızlı tarama
             if (points.length >= MAX_POINTS) break;
             
             const y = data.readDoubleLE(i);
@@ -911,7 +911,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
         }
 
         // 2. Nokta Sayısı Kontrolü ve Otomatik Seyreltme (Decimation)
-        const POINT_LIMIT = 20000; 
+        const POINT_LIMIT = 10000; 
         const decimate = (pts, limit) => {
             if (pts.length <= limit) return pts;
             const factor = Math.ceil(pts.length / limit);
