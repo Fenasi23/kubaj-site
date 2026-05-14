@@ -495,7 +495,10 @@ const parseNcz = (buffer) => {
         // Netcad 8.0 ve üzeri için 64-bit Double taraması
         let lastX = 0, lastY = 0, currentPath = [];
         
-        for (let i = 0; i < data.length - 24; i++) {
+        const MAX_POINTS = 500000; // 500 bin nokta limiti
+        for (let i = 0; i < data.length - 24; i += 2) { // 2 byte adımlarla daha hızlı tarama
+            if (points.length >= MAX_POINTS) break;
+            
             const y = data.readDoubleLE(i);
             const x = data.readDoubleLE(i + 8);
             const z = data.readDoubleLE(i + 16);
@@ -503,6 +506,7 @@ const parseNcz = (buffer) => {
             const isValidVal = (v) => typeof v === 'number' && !isNaN(v) && isFinite(v) && Math.abs(v) < 10000000;
             
             if (isValidVal(y) && isValidVal(x) && isValidVal(z)) {
+                // Türkiye koordinat aralığı (UTM/ITRF) veya yerel koordinatlar
                 const inRange = (y > -2000000 && y < 20000000 && x > -2000000 && x < 20000000);
                 
                 if (inRange && Math.abs(y) > 0.001 && Math.abs(x) > 0.001) {
@@ -516,8 +520,6 @@ const parseNcz = (buffer) => {
                     points.push(p);
 
                     // BREAKLINE TESPİTİ (Heuristic): 
-                    // Eğer noktalar dosyada ardışık geliyorsa ve aralarındaki mesafe makul ise (şev/çizgi),
-                    // bunları bir 'Kırık Hat' olarak değerlendir.
                     const distToLast = Math.hypot(x - lastX, y - lastY);
                     if (distToLast > 0.001 && distToLast < 50) {
                         currentPath.push(p);
@@ -527,7 +529,7 @@ const parseNcz = (buffer) => {
                     }
                     
                     lastX = x; lastY = y;
-                    i += 23; 
+                    i += 22; // Toplam 24 byte ilerlemiş oluruz (i += 2 + 22)
                 }
             }
         }
@@ -973,6 +975,20 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             const bboxM = getBBox(ptsMevcut);
             const bboxP = getBBox(ptsProje);
+
+            // KURAL: Mesafe Kontrolü (Safeguard)
+            // Mevcut ve Proje merkezleri arasındaki mesafe 500 metreden fazlaysa hesaplamayı başlatma.
+            const centerM = { x: (bboxM.minX + bboxM.maxX) / 2, y: (bboxM.minY + bboxM.maxY) / 2 };
+            const centerP = { x: (bboxP.minX + bboxP.maxX) / 2, y: (bboxP.minY + bboxP.maxY) / 2 };
+            const distCenters = Math.hypot(centerM.x - centerP.x, centerM.y - centerP.y);
+
+            if (distCenters > 500 && req.body.autoAlign !== 'true') {
+                return res.status(400).json({ 
+                    error: 'ALIGNMENT_REQUIRED', 
+                    message: `Koordinat uyumsuzluğu tespit edildi! Mevcut ve Proje dosyalarının merkezleri arasındaki mesafe ${Math.round(distCenters)} metredir.`,
+                    detail: 'Dosyaları otomatik hizalamayı denemek ister misiniz?'
+                });
+            }
 
             const centroidM = getCentroid(ptsMevcut);
             const centroidP = getCentroid(ptsProje);
