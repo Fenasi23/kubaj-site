@@ -495,8 +495,8 @@ const parseNcz = (buffer) => {
         // Netcad 8.0 ve üzeri için 64-bit Double taraması
         let lastX = 0, lastY = 0, currentPath = [];
         
-        const MAX_POINTS = 500000; // 500 bin nokta limiti
-        for (let i = 0; i < data.length - 24; i += 2) { // 2 byte adımlarla daha hızlı tarama
+        const MAX_POINTS = 50000; // Vercel için 50k nokta sınırı (Stabilite için)
+        for (let i = 0; i < data.length - 24; i += 4) { // 4 byte adımlarla daha hızlı tarama
             if (points.length >= MAX_POINTS) break;
             
             const y = data.readDoubleLE(i);
@@ -560,12 +560,14 @@ const parseNcz = (buffer) => {
             }
         });
 
-        // Duplicate Removal
+        // Duplicate & Density Removal (HIZLANDIRMA)
         if (points.length > 0) {
             const uniquePoints = [];
             const seen = new Set();
+            // 0.5 metre içindeki noktaları tek nokta olarak kabul et (Hız için)
+            const gridRes = 0.5; 
             points.forEach(p => {
-                const key = `${p.x.toFixed(3)}-${p.y.toFixed(3)}`;
+                const key = `${Math.round(p.x/gridRes)}-${Math.round(p.y/gridRes)}`;
                 if (!seen.has(key)) {
                     uniquePoints.push(p);
                     seen.add(key);
