@@ -1085,7 +1085,7 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const spatialGridP = createSpatialGrid(ptsProjeOffset, delProje.triangles, newBBoxP_Local);
 
             const startTime = Date.now();
-            const MAX_CALC_TIME = 10000; // 10 Saniye limit (Kullanıcı Talebi)
+            const MAX_CALC_TIME = 5000; // 5 Saniye (Graceful Degradation)
 
             // Adım A: Mevcut noktalarını proje yüzeyine iz düşür
             for (const p of ptsMevcutOffset) {

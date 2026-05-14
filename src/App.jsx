@@ -1026,9 +1026,11 @@ function App() {
       
       let errorMessage = error.message;
       if (errorData) {
-          errorMessage = typeof errorData === 'string' ? errorData : (errorData.message || errorData.error || JSON.stringify(errorData));
+          errorMessage = typeof errorData === 'string' ? errorData : (errorData.message || errorData.error || JSON.stringify(errorData, null, 2));
+      } else {
+          errorMessage = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
       }
-      alert('Hata: ' + errorMessage);
+      alert('Hata Detayı:\n' + errorMessage);
     } finally {
       setLoading(false);
     }
