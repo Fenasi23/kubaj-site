@@ -747,13 +747,14 @@ function App() {
     fetchSettings();
   }, [API_URL]);
 
-  // useEffect(() => {
-  //   if (selectedFirm) {
-  //     axios.get(`${API_URL}/api/firms/${selectedFirm.id}/projects`).then(r => {
-  //       setProjects(r.data);
-  //     });
-  //   }
-  // }, [selectedFirm, API_URL]);
+  useEffect(() => {
+    if (selectedFirm) {
+      const firmId = selectedFirm.id || selectedFirm._id;
+      axios.get(`${API_URL}/api/firms/${firmId}/projects`).then(r => {
+        setProjects(r.data);
+      }).catch(e => console.error("Projeler çekilemedi:", e));
+    }
+  }, [selectedFirm, API_URL]);
 
   // Arşiv Projelerini Yükle
   const fetchArchiveProjects = useCallback(async () => {
@@ -2882,9 +2883,9 @@ function App() {
               <div className="firm-selector" style={{ background: 'rgba(59, 130, 246, 0.05)', borderRadius: '10px', padding: '2px 10px', border: '1px solid rgba(59, 130, 246, 0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <select 
                   className="top-select"
-                  value={selectedFirm?.id || ''} 
+                  value={selectedFirm?.id || selectedFirm?._id || ''} 
                   onChange={(e) => {
-                    const f = firms.find(f => f.id === e.target.value);
+                    const f = firms.find(f => (f.id === e.target.value || f._id === e.target.value));
                     setSelectedFirm(f);
                     localStorage.setItem('selectedFirmId', e.target.value);
                   }}
@@ -2906,7 +2907,7 @@ function App() {
                     onChange={(e) => setSelectedProject(e.target.value)}
                   >
                     <option value="">İş Seçin</option>
-                    {projects.map(p => <option key={p} value={p}>{p}</option>)}
+                    {projects.map((p, idx) => <option key={idx} value={p}>{p}</option>)}
                   </select>
                   <button onClick={() => handleAddProject(selectedFirm.id)} className="btn-icon-small" style={{ color: 'var(--accent-color)', background: 'transparent', border: 'none' }}><Plus size={16} /></button>
                   {selectedProject && (

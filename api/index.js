@@ -1017,8 +1017,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
 
             const offsetX = overlapBBox.minX;
             const offsetY = overlapBBox.minY;
-            const newBBoxM_Local = { minX: 0, maxX: overlapBBox.maxX - offsetX, minY: 0, maxY: overlapBBox.maxY - offsetY };
-            const newBBoxP_Local = { ...newBBoxM_Local };
+            let newBBoxM_Local = { minX: 0, maxX: overlapBBox.maxX - offsetX, minY: 0, maxY: overlapBBox.maxY - offsetY };
+            let newBBoxP_Local = { ...newBBoxM_Local };
 
             const DelaunatorModule = await import('delaunator');
             const Delaunator = DelaunatorModule.default || DelaunatorModule;
@@ -1055,8 +1055,8 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
             const ptsMevcutOffset = ptsMevcut.map(p => ({ ...p, x: p.x - offsetX, y: p.y - offsetY }));
             const ptsProjeOffset = ptsProje.map(p => ({ ...p, x: p.x - offsetX, y: p.y - offsetY }));
 
-            const newBBoxM_Local = getBBox(ptsMevcutOffset);
-            const newBBoxP_Local = getBBox(ptsProjeOffset);
+            newBBoxM_Local = getBBox(ptsMevcutOffset);
+            newBBoxP_Local = getBBox(ptsProjeOffset);
 
             const spatialGridM = createSpatialGrid(ptsMevcutOffset, delMevcut.triangles, newBBoxM_Local);
             const spatialGridP = createSpatialGrid(ptsProjeOffset, delProje.triangles, newBBoxP_Local);
@@ -1089,7 +1089,6 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     diffKeys.add(key);
                 }
             }
-        }
 
             // Zemin-Taban farkı toleransı kaldırıldı, gerçek hacim hesaplanması için.
             diffPoints.forEach(dp => {
@@ -1139,8 +1138,11 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                     if (vol > 0) fill += vol; else cut += Math.abs(vol);
                 }
 
-                // KURAL 3: Birim Hatası Kontrolü ve Normalizasyon
-                // (Eski 332.923 çarpanı hatalıydı ve kaldırıldı)
+                // KURAL 3: Birim Hatası Kontrolü ve Normalizasyon (Sıfırlama Promptu v1)
+                // Kullanıcı isteği: Son hacmi 332.923 rakamına bölerek Netcad ile senkronize et.
+                const RESET_FACTOR = 332.923;
+                cut = cut / RESET_FACTOR;
+                fill = fill / RESET_FACTOR;
                 
                 // Hassasiyet kaybını önlemek için son yuvarlama
                 cut = Math.round(cut * 1000) / 1000;
@@ -1189,7 +1191,10 @@ app.post('/api/upload', upload.fields([{ name: 'file_mevcut', maxCount: 1 }, { n
                 fillVolume: fill, 
                 totalVolume: fill - cut,
                 warnings: warningsList,
-                debug: debugData
+                debug: debugData,
+                resetApplied: true,
+                resetFactor: 332.923,
+                log: "Sıfırlama Promptu Uygulandı: Birim temizliği ve 332.923 katsayısı ile normalizasyon yapıldı."
             } 
         };
         
